@@ -30,6 +30,29 @@ def test_build_company_graph_links_companies_sharing_a_person():
     assert "禾昌五金" in g  # 無共用者仍須入圖，否則歸戶會漏掉單獨公司
 
 
+def test_build_company_graph_accumulates_multiple_shared_persons():
+    """兩家公司共用多名自然人時，weight 要累加、shared 要收齊並排序。
+
+    只共用一人的案例檢不出「以 shared = [person] 覆寫而非 append」或
+    「weight 未累加」——這兩種錯在 weight==1 時看起來完全正常。
+    """
+    affiliations = [
+        Affiliation("甲公司", "王五", "董事"),
+        Affiliation("乙公司", "王五", "監察人"),
+        Affiliation("甲公司", "李四", "監察人"),
+        Affiliation("乙公司", "李四", "董事"),
+        Affiliation("甲公司", "張三", "董事長"),
+        Affiliation("乙公司", "張三", "董事"),
+    ]
+
+    g = build_company_graph(affiliations)
+
+    assert g["甲公司"]["乙公司"]["weight"] == 3
+    # 刻意讓插入順序（王五→李四→張三）與排序後順序（張三→李四→王五）相反，
+    # 否則漏掉最後那圈 shared.sort() 也看不出來。
+    assert g["甲公司"]["乙公司"]["shared"] == ["張三", "李四", "王五"]
+
+
 def test_detect_groups_is_transitive():
     """A-B 共用、B-C 共用，則 A、B、C 同屬一個歸戶群組。"""
     g = build_company_graph(_AFFILIATIONS)
