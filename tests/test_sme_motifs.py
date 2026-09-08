@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import networkx as nx
 
-from smelens.sna.sme_motifs import detect_cycle_trade
+from smelens.sna.sme_motifs import detect_cycle_trade, detect_shell_intermediary
 
 
 def test_detect_cycle_trade_finds_three_node_cycle():
@@ -60,3 +60,36 @@ def test_detect_cycle_trade_keeps_opposite_direction_cycles_separate():
 
     assert len(three_node) == 2
     assert {tuple(h.nodes) for h in three_node} == {("A", "B", "C"), ("A", "C", "B")}
+
+
+def test_detect_shell_intermediary_flags_passthrough_node():
+    """錢進來就出去、對手方極少者為空殼；有留存毛利者不是。"""
+    g = nx.DiGraph()
+    g.add_edge("買方甲", "宏益企業", amount=5_000_000.0)
+    g.add_edge("宏益企業", "供應商乙", amount=4_950_000.0)  # 過水比 99%
+    g.add_edge("買方甲", "實營公司", amount=5_000_000.0)
+    g.add_edge("實營公司", "供應商乙", amount=3_000_000.0)  # 留存 40%，非空殼
+
+    hits = detect_shell_intermediary(g, min_passthrough=0.9, max_counterparties=3)
+
+    assert [h.center for h in hits] == ["宏益企業"]
+    assert hits[0].motif == "shell_intermediary"
+    assert "過水比" in hits[0].description_zh
+
+
+def test_detect_shell_intermediary_ignores_many_counterparties():
+    """對手方眾多的樞紐是集散中心而非空殼，不應命中。"""
+    g = nx.DiGraph()
+    for i in range(5):
+        g.add_edge(f"進{i}", "樞紐", amount=1_000_000.0)
+    g.add_edge("樞紐", "出0", amount=5_000_000.0)
+
+    assert detect_shell_intermediary(g, max_counterparties=3) == []
+
+
+def test_detect_shell_intermediary_ignores_endpoints():
+    """只有進或只有出的端點不構成過水中介。"""
+    g = nx.DiGraph()
+    g.add_edge("起點", "終點", amount=1_000_000.0)
+
+    assert detect_shell_intermediary(g) == []

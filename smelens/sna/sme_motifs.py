@@ -62,3 +62,44 @@ def detect_cycle_trade(
             )
         )
     return hits
+
+
+def detect_shell_intermediary(
+    g: nx.DiGraph, min_passthrough: float = 0.9, max_counterparties: int = 3
+) -> list[MotifHit]:
+    """偵測空殼過水中介：錢進來就出去、自己幾乎不留，且對手方極少。
+
+    企金意義：正常營運企業會留下毛利、繳稅與發薪，流入與流出金額不會近乎
+    相等。流入 ≈ 流出且對手方高度集中，是空殼公司代開發票、代收轉付的典型
+    特徵——這種節點會讓資金流向在帳面上「合理化」，是關係人交易的遮蔽層。
+
+    對手方數以進、出**度數**衡量（非金額），任一方向超過 max_counterparties
+    即視為集散樞紐而非空殼。
+    """
+    hits: list[MotifHit] = []
+    for node in g.nodes():
+        in_amount = sum(float(d.get("amount", 0.0)) for _, _, d in g.in_edges(node, data=True))
+        out_amount = sum(float(d.get("amount", 0.0)) for _, _, d in g.out_edges(node, data=True))
+        if in_amount <= 0 or out_amount <= 0:
+            continue
+        in_degree = g.in_degree(node)
+        out_degree = g.out_degree(node)
+        if in_degree > max_counterparties or out_degree > max_counterparties:
+            continue
+        ratio = min(in_amount, out_amount) / max(in_amount, out_amount)
+        if ratio < min_passthrough:
+            continue
+        peers = sorted({*g.predecessors(node), *g.successors(node)}, key=str)
+        hits.append(
+            MotifHit(
+                motif="shell_intermediary",
+                center=node,
+                nodes=[node, *peers],
+                description_zh=(
+                    f"節點 {node} 流入 {in_amount:,.0f}、流出 {out_amount:,.0f}，"
+                    f"過水比 {ratio:.0%}，對手方僅 {in_degree} 進 {out_degree} 出，"
+                    "自身幾無留存，符合空殼中介過水圖樣。"
+                ),
+            )
+        )
+    return hits
