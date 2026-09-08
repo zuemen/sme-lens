@@ -128,6 +128,27 @@ def test_credit_opinion_label_thresholds_are_pinned():
     }
 
 
+def test_credit_opinion_caution_band_is_reachable_and_pinned():
+    """留意級（0.4 ≤ 分數 < 0.7）必須被真的走到，否則門檻對調不會被抓到。
+
+    兩家劇本公司的規則分數是 0.83 與 0.09，都落在模糊帶之外——把 0.7 與 0.4
+    對調，它們的 label 一個字都不會變，測試等於沒牙。改以 model_score 把分數
+    推進中間帶：此時門檻一對調，caution 就會變成 watch，測試才真的擋得住。
+    這同時也是 model_score 混合路徑（0.5×模型 + 0.5×規則）唯一的測試。
+    """
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    opinion = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits, model_score=0.8
+    )
+
+    assert opinion["label"] == "caution"
+    assert opinion["label_zh"] == "留意"
+    assert 0.4 <= opinion["attention_score"] < 0.7
+    assert "GNN 模型判定違約機率 0.80" in opinion["narrative_zh"]
+
+
 def test_credit_opinion_narrative_speaks_about_the_applicant():
     """敘事必須以本次授信對象為主詞，且不得出現「。；」的串接瑕疵。"""
     g = load_supply_chain_scenario()
