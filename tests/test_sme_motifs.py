@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import networkx as nx
 
-from smelens.sna.sme_motifs import detect_cycle_trade, detect_shell_intermediary
+from smelens.sna.sme_motifs import (
+    detect_all_sme,
+    detect_buyer_concentration,
+    detect_cycle_trade,
+    detect_shell_intermediary,
+)
 
 
 def test_detect_cycle_trade_finds_three_node_cycle():
@@ -97,3 +102,43 @@ def test_detect_shell_intermediary_ignores_endpoints():
     g.add_edge("起點", "終點", amount=1_000_000.0)
 
     assert detect_shell_intermediary(g) == []
+
+
+def test_detect_buyer_concentration_flags_single_buyer():
+    """逾七成收入來自單一買方者命中；收入分散者不命中。"""
+    g = nx.DiGraph()
+    g.add_edge("大買方", "集中廠商", amount=9_000_000.0)
+    g.add_edge("小買方", "集中廠商", amount=1_000_000.0)  # 90% 集中
+    g.add_edge("大買方", "分散廠商", amount=3_000_000.0)
+    g.add_edge("小買方", "分散廠商", amount=3_500_000.0)  # 54% 集中
+
+    hits = detect_buyer_concentration(g, min_ratio=0.7)
+
+    assert [h.center for h in hits] == ["集中廠商"]
+    assert hits[0].motif == "buyer_concentration"
+    assert hits[0].nodes == ["集中廠商", "大買方"]
+
+
+def test_detect_buyer_concentration_respects_min_revenue():
+    """營收規模低於門檻者不納入評估，避免對微型往來過度反應。"""
+    g = nx.DiGraph()
+    g.add_edge("大買方", "微型廠商", amount=50_000.0)
+
+    assert detect_buyer_concentration(g, min_ratio=0.7, min_revenue=1_000_000.0) == []
+
+
+def test_detect_all_sme_combines_three_motifs():
+    """合集應同時涵蓋三種圖樣。"""
+    g = nx.DiGraph()
+    # 封閉資金環
+    g.add_edge("環甲", "環乙", amount=2_000_000.0)
+    g.add_edge("環乙", "環甲", amount=1_900_000.0)
+    # 空殼過水
+    g.add_edge("來源", "空殼", amount=3_000_000.0)
+    g.add_edge("空殼", "去向", amount=2_970_000.0)
+
+    motifs = {h.motif for h in detect_all_sme(g)}
+
+    assert "cycle_trade" in motifs
+    assert "shell_intermediary" in motifs
+    assert "buyer_concentration" in motifs

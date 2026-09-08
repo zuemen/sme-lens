@@ -103,3 +103,51 @@ def detect_shell_intermediary(
             )
         )
     return hits
+
+
+def detect_buyer_concentration(
+    g: nx.DiGraph, min_ratio: float = 0.7, min_revenue: float = 0.0
+) -> list[MotifHit]:
+    """偵測單一買方營收集中：逾 min_ratio 的收入來自同一家買方。
+
+    企金意義：買方集中度過高的供應商，一旦該買方抽單、殺價或倒閉即現金流
+    斷裂。這是中小企業授信最典型的隱藏風險，卻**不會顯現在財報的獲利數字
+    上**——帳面毛利可能很漂亮，風險藏在客戶結構裡。
+
+    收入定義為 in-edges 金額總和（邊方向 u → v 表示 u 付款給 v）。
+    營收低於 min_revenue 者跳過，避免對微型往來過度反應。
+    """
+    hits: list[MotifHit] = []
+    for node in g.nodes():
+        by_buyer: dict[object, float] = {}
+        for u, _, d in g.in_edges(node, data=True):
+            by_buyer[u] = by_buyer.get(u, 0.0) + float(d.get("amount", 0.0))
+        revenue = sum(by_buyer.values())
+        if revenue <= 0 or revenue < min_revenue:
+            continue
+        # 金額相同時以字串排序決勝，確保結果穩定可重現
+        top_buyer = max(by_buyer, key=lambda b: (by_buyer[b], str(b)))
+        ratio = by_buyer[top_buyer] / revenue
+        if ratio < min_ratio:
+            continue
+        hits.append(
+            MotifHit(
+                motif="buyer_concentration",
+                center=node,
+                nodes=[node, top_buyer],
+                description_zh=(
+                    f"節點 {node} 收入 {revenue:,.0f} 中有 {ratio:.0%} 來自單一買方 "
+                    f"{top_buyer}，符合買方集中圖樣（客戶集中度風險）。"
+                ),
+            )
+        )
+    return hits
+
+
+def detect_all_sme(g: nx.DiGraph) -> list[MotifHit]:
+    """企金三大風險圖樣一次偵測，供授信意見書引用。"""
+    return [
+        *detect_cycle_trade(g),
+        *detect_shell_intermediary(g),
+        *detect_buyer_concentration(g),
+    ]
