@@ -21,6 +21,29 @@ from smelens.sna.sme_motifs import detect_all_sme
 
 _LABEL_ZH = {"watch": "關注", "caution": "留意", "normal": "正常"}
 
+
+def _motif_sentence(node: Any, hit: Any) -> str:
+    """把圖樣命中改寫成以「本次授信對象」為主詞的句子（結尾不帶句號）。
+
+    圖樣的 `center` 是全圖層級的代表節點——以循環交易為例，取的是環上字典序
+    最小者。但授信意見書是寫給「這一家公司」看的：一份談 A 公司的文件，證據
+    段卻以 B 公司開頭，讀的人第一秒就會卡住，而可讀性正是本模組存在的理由。
+
+    故當本公司只是環上成員而非 center 時，改以本公司為起點重述整條路徑。
+    其餘圖樣的 center 本來就是被指認的那家公司，沿用原敘事即可。
+    """
+    text = hit.description_zh.rstrip("。")
+    if hit.motif != "cycle_trade" or hit.center == node or node not in hit.nodes:
+        return text
+    start = hit.nodes.index(node)
+    ordered = hit.nodes[start:] + hit.nodes[:start]
+    path_zh = " → ".join(str(n) for n in [*ordered, node])
+    return (
+        f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}），"
+        "符合循環交易／資金迴流圖樣"
+    )
+
+
 _RECOMMENDATION_ZH = {
     "watch": "建議暫緩核貸，先行實地查核關係人交易與主要買方合約之真實性。",
     "caution": "建議核貸但調降額度並縮短覆審週期，要求補提主要買方合約與出貨憑證。",
@@ -132,7 +155,9 @@ def generate_credit_opinion(
         f"（{_LABEL_ZH[label]}）。"
     ]
     if relevant:
-        narrative.append("命中企金風險圖樣：" + "；".join(h.description_zh for h in relevant))
+        # 逐句去掉自帶的句號再以分號串接，最後統一補一個句號——直接串會產生「。；」。
+        sentences = "；".join(_motif_sentence(node, hit) for hit in relevant)
+        narrative.append(f"命中企金風險圖樣：{sentences}。")
     else:
         narrative.append("未命中任何企金風險圖樣。")
     narrative.append(

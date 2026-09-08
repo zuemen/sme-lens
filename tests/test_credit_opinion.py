@@ -94,6 +94,54 @@ def test_credit_opinion_normal_company_is_not_watch():
     assert opinion["motif_hits"] == []
 
 
+def test_credit_opinion_label_thresholds_are_pinned():
+    """三級分界與結構證據欄位都要釘死：把 0.7／0.4 對調也必須有測試會紅。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    watch = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+    normal = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert watch["label"] == "watch"
+    assert watch["label_zh"] == "關注"
+    assert watch["attention_score"] >= 0.7
+    assert normal["label"] == "normal"
+    assert normal["label_zh"] == "正常"
+    assert normal["attention_score"] < 0.4
+    # 結構證據欄位是「可解釋」主張的實體，不得為空或殘缺
+    assert set(watch["centrality_percentile"]) == {
+        "in_degree",
+        "out_degree",
+        "pagerank",
+        "kcore",
+        "betweenness",
+    }
+    assert all(0.0 <= v <= 100.0 for v in watch["centrality_percentile"].values())
+    assert isinstance(watch["community_risk_ratio"], float)
+    assert {hit["motif"] for hit in watch["motif_hits"]} == {
+        "cycle_trade",
+        "buyer_concentration",
+    }
+
+
+def test_credit_opinion_narrative_speaks_about_the_applicant():
+    """敘事必須以本次授信對象為主詞，且不得出現「。；」的串接瑕疵。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    narrative = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )["narrative_zh"]
+
+    assert "。；" not in narrative
+    # 環上證據要從本公司講起，不是從環上字典序最小的另一家公司講起
+    assert "本公司位於長度 4 的封閉資金環（泰昇精密 →" in narrative
+
+
 def test_credit_opinion_carries_group_context():
     """帶入集團資訊時應原樣附在意見書上，供行員覆核集團曝險。"""
     g = load_supply_chain_scenario()
