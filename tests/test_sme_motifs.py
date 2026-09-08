@@ -75,6 +75,10 @@ def test_detect_shell_intermediary_flags_passthrough_node():
     assert [h.center for h in hits] == ["宏益企業"]
     assert hits[0].motif == "shell_intermediary"
     assert "過水比" in hits[0].description_zh
+    # nodes 的內容要釘死：只放中介本身（漏掉對手方）或只放對手方（漏掉中介）
+    # 都會讓下游證據少一半，而僅檢查 center 的斷言抓不到這兩種錯。
+    assert hits[0].nodes[0] == "宏益企業", "nodes 首位必須是中介節點本身"
+    assert set(hits[0].nodes[1:]) == {"買方甲", "供應商乙"}, "nodes 須含上下游對手方"
 
 
 def test_detect_shell_intermediary_ignores_many_counterparties():
