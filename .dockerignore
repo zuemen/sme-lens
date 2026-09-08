@@ -1,0 +1,18 @@
+# 縮小 build context：資料集、權重、研究產物、測試、快取一律不進映像
+.git
+.github
+.venv
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+data/
+checkpoints/
+research/
+docs/images/
+tests/
+
+*.env
+.env

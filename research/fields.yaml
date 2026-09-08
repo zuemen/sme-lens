@@ -1,0 +1,97 @@
+# ChainLens 深度研究欄位定義
+# detail_level: brief -> moderate -> detailed
+
+fields:
+  basic_info:
+    - name: name
+      description: Item name (paper title / dataset / method / system)
+      detail_level: brief
+    - name: item_type
+      description: One of paper / dataset / method / system / trend
+      detail_level: brief
+    - name: year
+      description: Publication or release year
+      detail_level: brief
+    - name: authors_or_org
+      description: Authors or organization
+      detail_level: brief
+
+  method:
+    - name: core_method
+      description: Core technical approach (architecture, algorithm, pipeline)
+      detail_level: detailed
+    - name: graph_task_type
+      description: node / edge-link / subgraph classification (or n/a)
+      detail_level: brief
+    - name: temporal_modeling
+      description: How temporal dynamics of transaction graphs are modeled (if any)
+      detail_level: moderate
+    - name: class_imbalance_handling
+      description: Techniques for the extreme licit/illicit imbalance (weighting, sampling, loss)
+      detail_level: moderate
+    - name: heterophily_handling
+      description: How heterophily/camouflage (fraudsters linking to normal users) is addressed
+      detail_level: moderate
+    - name: supervision_regime
+      description: supervised / semi- / self-supervised / weakly-supervised / few-shot
+      detail_level: brief
+    - name: edge_and_direction_support
+      description: Whether directed multigraph structure and edge features (amount, time) are exploited
+      detail_level: moderate
+    - name: typology_coverage
+      description: Laundering/fraud typologies addressed (smurfing, gather-scatter, peeling, mixer, pig-butchering)
+      detail_level: moderate
+    - name: chain_coverage
+      description: Bitcoin / Ethereum / TRON / multi-chain / synthetic / off-chain
+      detail_level: brief
+
+  evaluation:
+    - name: datasets_used
+      description: Datasets used for evaluation (Elliptic, Elliptic++, AMLworld, custom chains)
+      detail_level: moderate
+    - name: key_metrics
+      description: Headline numbers, especially illicit-class F1 / PR-AUC on Elliptic official split
+      detail_level: detailed
+
+  explainability:
+    - name: explainability_approach
+      description: How predictions are explained (subgraph, feature attribution, motif, narrative)
+      detail_level: detailed
+    - name: explainability_type
+      description: attention-native / post-hoc (GNNExplainer, PGExplainer, SubgraphX) / self-explainable mask / SHAP-LIME / rule-based / none
+      detail_level: brief
+
+  practicality:
+    - name: code_availability
+      description: Open-source status and repo link if available
+      detail_level: brief
+    - name: data_availability
+      description: Whether datasets involved are publicly downloadable (and license)
+      detail_level: brief
+    - name: scalability
+      description: Graph scale handled (nodes/edges), CPU feasibility, real-time capability
+      detail_level: moderate
+    - name: llm_integration
+      description: none / annotation / feature-generation / end-to-end
+      detail_level: brief
+    - name: deployment_maturity
+      description: academic prototype / open-source library / production system
+      detail_level: brief
+    - name: integration_difficulty
+      description: Effort to integrate into ChainLens (low/medium/high + why)
+      detail_level: moderate
+
+  smelens_relevance:
+    - name: relevance_to_smelens
+      description: Concretely how ChainLens (SNA features + GCN/GraphSAGE + rule motifs + evidence narrative, Elliptic + TRON TRC-20) could adopt or learn from this item
+      detail_level: detailed
+    - name: key_takeaways
+      description: 3-5 bullet takeaways for the ChainLens team
+      detail_level: detailed
+
+  meta:
+    - name: sources
+      description: Reference URLs
+      detail_level: brief
+
+uncertain: []

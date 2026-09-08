@@ -1,0 +1,102 @@
+topic: GNN/SNA 加密貨幣詐騙與洗錢金流偵測主流研究（強化 ChainLens）
+
+items:
+  - name: Elliptic Dataset and Weber et al. 2019 foundations
+    category: dataset-benchmark
+    description: >
+      Foundational Bitcoin AML work: Weber et al. 2019 (Anti-Money Laundering in Bitcoin),
+      Elliptic dataset (203k tx nodes), official temporal split (train<=34/test>=35),
+      GCN vs skip-GCN vs RandomForest baselines, canonical illicit-F1 numbers to beat.
+  - name: Elliptic++ and Elliptic2 datasets
+    category: dataset-benchmark
+    description: >
+      Elliptic++ (2023, actor-level + transaction-level labels) and Elliptic2
+      (2024, 122k labeled subgraphs over 49M-node background graph, subgraph
+      classification = learning the "shape" of money laundering). How tasks differ
+      from node-level Elliptic1.
+  - name: IBM AMLworld and Multi-GNN (directed multigraphs)
+    category: method
+    description: >
+      IBM AMLworld synthetic AML benchmark (NeurIPS 2023 D&B) and Multi-GNN
+      "Provably Powerful GNNs for Directed Multigraphs" (Egressy et al., AAAI 2024):
+      reverse message passing, ego-IDs, edge updates, port numbering; open source
+      github.com/IBM/Multi-GNN. Edge-level laundering detection.
+  - name: Temporal GNNs for transaction graphs
+    category: method
+    description: >
+      EvolveGCN (2020), TGN/TGAT continuous-time models, MDST-GNN (2025),
+      Temporal-Aware Graph Attention (arXiv 2506.21382), Wavelet-Temporal Graph
+      Transformer (Sci Reports 2025). How temporal modeling improves Elliptic-style
+      temporal splits and what is practical on CPU.
+  - name: Money-laundering motif and typology detection
+    category: method
+    description: >
+      SNA/typology line: LAS-GNN temporal laundering motifs (ICAIF 2025), smurfing
+      gather-scatter / scatter-gather detection, temporal motifs in crypto networks
+      (Sci Reports 2024), FlowScope, peeling chains. Rule+learning hybrids and how
+      typologies map to explainable evidence.
+  - name: Heterophily and camouflage-aware fraud GNNs
+    category: method
+    description: >
+      From CARE-GNN/PC-GNN to 2023-2025 generation: heterophily+spectrum view
+      (arXiv 2312.06441), DGA-GNN (AAAI 2024), GDN/SEC-GFD, SCFCRC feature/relation
+      camouflage (arXiv 2501.12430). Why fraud graphs are heterophilic and what
+      filters/grouping help.
+  - name: GNN explainability for AML and fraud
+    category: method
+    description: >
+      GNNExplainer, PGExplainer, SubgraphX applied to fraud/AML; SEFraud
+      self-explainable masks (arXiv 2406.11389); attention-native explanations;
+      explainable GNN AML frameworks on Elliptic (IJCNC 2025). Which explanation
+      types are valuable for compliance reports.
+  - name: LLM plus graph fraud investigation agents
+    category: trend
+    description: >
+      RiskTagger LLM annotation agent for Web3 laundering (arXiv 2510.17848),
+      UniDetect cross-chain LLM-driven detection (arXiv 2604.12329), multi-level
+      LLM-enhanced graph fraud detection (arXiv 2507.11997), LLM-GNN soft prompts.
+      Weak supervision and narrative generation use cases.
+  - name: Ethereum phishing and scam-token detection
+    category: method
+    description: >
+      Address-level scam detection line: Trans2Vec/T-EDGE random-walk era,
+      TokenScout temporal graph scam-token early detection (CCS 2024), PDHG
+      heterogeneous graph transformer (ESWA 2025), DA-HGNN (2024). Transferable
+      ideas for TRON TRC-20 address scoring.
+  - name: TRON USDT stablecoin fraud flow studies
+    category: empirical
+    description: >
+      Griffin & Mei pig-butchering economics (SSRN 2024-25, $27.8B/yr flows via
+      exchanges/Tether), StableAML stablecoin wallet AML (arXiv 2602.17842),
+      USDT blacklisting practice ($1.26B frozen 2025), T3 Financial Crime Unit
+      (TRON+Tether+TRM). Ground-truth typologies on TRON.
+  - name: Commercial blockchain analytics systems
+    category: system
+    description: >
+      Chainalysis Reactor, Elliptic Navigator/Lens, TRM Labs: entity clustering,
+      risk scoring, typology libraries, investigation UX. What product capabilities
+      a VASP compliance tool is expected to have.
+  - name: Scalability federation and privacy in AML graph ML
+    category: engineering
+    description: >
+      BlazingAML high-throughput multi-stage graph mining (arXiv 2604.12241),
+      collaborative AML across institutions (arXiv 2502.19952), FHE
+      privacy-preserving graph ML (arXiv 2411.02926). Production-scale and
+      cross-institution constraints.
+  - name: Low-label and imbalance strategies on Elliptic
+    category: method
+    description: >
+      Inspection-L self-supervised GNN, semi/self-supervised regimes, class
+      weighting vs focal loss vs sampling (GraphSMOTE etc.), active learning for
+      AML. Best practices when illicit labels are scarce (2% class).
+  - name: Survey anchor GNN financial fraud detection review
+    category: survey
+    description: >
+      "Graph Neural Networks for Financial Fraud Detection: A Review"
+      (arXiv 2411.05815, 2024) and related surveys: taxonomy, open challenges,
+      where an explainable SNA+GNN VASP tool fits in the landscape.
+
+execution:
+  batch_size: 4
+  items_per_agent: 2
+  output_dir: C:\Users\sanketsu\ChainLens\research\results

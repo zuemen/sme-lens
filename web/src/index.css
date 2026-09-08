@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  /* 表面：slate 階系，可從同一階系推導整套 UI 色 */
+  --color-base: #0F172A;         /* slate-900 */
+  --color-panel: #1B2336;
+  --color-panel-raised: #222B40;
+
+  /* 邊框分兩階：裝飾線不受 3:1 規範，控制項邊界必須達標 */
+  --color-line: #334155;         /* 1.72:1 — 僅供分隔線與面板外框 */
+  --color-line-strong: #64748B;  /* 3.75:1 — 表單輸入框與控制項邊界 */
+
+  --color-ink: #F8FAFC;          /* 17.06:1 於 base */
+  --color-muted: #94A3B8;        /* 6.96:1 於 base、6.11:1 於 panel */
+
+  /* 風險語意色：文字用，兩種底色皆 ≥4.5:1 */
+  --color-risk-high: #F87171;    /* 6.45 / 5.66 — 不可改回 #EF4444，它在面板上只有 4.16 */
+  --color-risk-med: #F59E0B;     /* 8.31 / 7.30 */
+  --color-risk-low: #22C55E;     /* 7.83 / 6.88 */
+
+  /* 圖譜專用（非文字，門檻 3:1，繪製於 canvas） */
+  --color-graph-bg: #0d1219;
+  --color-focus: #f1c40f;        /* 11.31:1 於畫布 */
+  --color-path: #f39c12;         /* 8.57:1 於畫布 */
+
+  --color-ring: #38BDF8;         /* 8.33:1 — 鍵盤焦點環 */
+
+  --font-sans: "IBM Plex Sans", "Noto Sans TC", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+html {
+  background-color: var(--color-base);
+  color: var(--color-ink);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+}
+
+/* 地址與數值一律等寬且等距數字，這是法遵工具的閱讀慣例，也避免數字跳動 */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 表單控制項的邊界是識別它的唯一依據，必須用達標的那一階 */
+input,
+select {
+  border-color: var(--color-line-strong);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

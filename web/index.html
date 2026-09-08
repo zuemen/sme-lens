@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 字體來自 Google Fonts；先建立連線可省下一次 DNS + TLS 往返。
+         Noto Sans TC 是中日韓字體，體積大，Google 以 unicode-range 分片供應，
+         這個 preconnect 對首次繪製的影響特別明顯。 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap"
+    />
+    <title>鏈鏡 ChainLens — 虛擬資產詐騙金流偵測平台</title>
+    <meta
+      name="description"
+      content="以社會網路分析與圖神經網路偵測虛擬資產詐騙金流，每個風險判定都附帶可稽核的結構證據。"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

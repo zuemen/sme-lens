@@ -1,0 +1,34 @@
+# Render Blueprint：一鍵部署 ChainLens 的兩個服務（共用同一 Dockerfile）。
+# 使用方式：Render Dashboard → New → Blueprint → 選本 repo，會自動讀取本檔。
+# 敏感值（API key）於各服務的 Environment 分頁手動填入（sync: false）。
+services:
+  # FastAPI 風險評分 API（POST /score、GET /health、/docs）
+  - type: web
+    name: smelens-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    dockerCommand: sh -c "uvicorn smelens.api.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: TRONGRID_API_KEY   # TronGrid 抓真實 2-hop 圖用；留空走匿名限速
+        sync: false
+      - key: SMELENS_API_KEY  # 選配；設定後 /score 需帶 X-API-Key 標頭
+        sync: false
+
+  # Streamlit 工作台（出金審查 Demo + 金流圖譜工作台）
+  - type: web
+    name: smelens-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    dockerCommand: >-
+      sh -c "streamlit run smelens/app/workbench.py
+      --server.address 0.0.0.0 --server.port $PORT --server.headless true
+      --server.enableCORS false --server.enableXsrfProtection false
+      --browser.gatherUsageStats false"
+    envVars:
+      - key: TRONGRID_API_KEY
+        sync: false

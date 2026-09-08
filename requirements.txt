@@ -1,0 +1,14 @@
+# Vercel serverless lightweight deps -- only what the FastAPI /score path needs.
+# Deliberately excludes torch / torch-geometric / streamlit / pyvis / scikit-learn:
+# those are only for model training (train.py) and the Streamlit workbench, and
+# torch alone far exceeds Vercel's 250MB serverless bundle limit.
+# Full dev dependencies remain defined in pyproject.toml + uv.lock (see README).
+fastapi>=0.110
+pydantic>=2.6
+networkx>=3.2
+scipy>=1.11
+python-louvain>=0.16
+pandas>=2.0
+numpy>=1.26
+httpx>=0.27
+python-dotenv>=1.0
