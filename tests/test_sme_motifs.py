@@ -43,3 +43,20 @@ def test_detect_cycle_trade_respects_max_len():
 
     assert detect_cycle_trade(g, max_len=3) == []
     assert len(detect_cycle_trade(g, max_len=4)) == 1
+
+
+def test_detect_cycle_trade_keeps_opposite_direction_cycles_separate():
+    """同一組公司間方向相反的兩條資金環是兩筆獨立事證，不得併為一筆。
+
+    以節點集合去重會把 A→B→C→A 與 A→C→B→A 併成一筆而漏報一條循環金流；
+    同時本測試釘住 nodes 保留實際流向順序（非字典序）。
+    """
+    g = nx.DiGraph()
+    for u, v in [("A", "B"), ("B", "C"), ("C", "A"), ("A", "C"), ("C", "B"), ("B", "A")]:
+        g.add_edge(u, v, amount=1_000_000.0)
+
+    three_node = [h for h in detect_cycle_trade(g, max_len=3, min_amount=100_000.0)
+                  if len(h.nodes) == 3]
+
+    assert len(three_node) == 2
+    assert {tuple(h.nodes) for h in three_node} == {("A", "B", "C"), ("A", "C", "B")}
