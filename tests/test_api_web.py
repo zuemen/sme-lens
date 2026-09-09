@@ -10,17 +10,22 @@ from smelens.api.main import app
 client = TestClient(app)
 
 
-def test_screen_blocks_the_scenario_target() -> None:
-    """本案主角：自身乾淨、上游髒，必須被關聯分數攔下。"""
+def test_screen_reviews_the_scenario_target() -> None:
+    """本案主角：自身乾淨、上游髒——正確答案是 EDD 而非硬擋，門檻未動。
+
+    自身無結構異常（self_score 僅 0.149），全部指控來自二階關聯鏈
+    （association_score 0.6）；先前的 block 只是社群風險比被灌高成 1.0 的
+    副作用。
+    """
     response = client.post("/screen", json={"target": "TOtcOut01", "amount_usdt": 500000.0})
     assert response.status_code == 200
     body = response.json()
     assert body["target"] == "TOtcOut01"
-    assert body["risk_score"] == pytest.approx(0.7307, abs=1e-4)
-    assert body["self_score"] == pytest.approx(0.3268, abs=1e-4)
+    assert body["risk_score"] == pytest.approx(0.6596, abs=1e-4)
+    assert body["self_score"] == pytest.approx(0.1490, abs=1e-4)
     assert body["association_score"] == pytest.approx(0.6, abs=1e-4)
-    assert body["decision"] == "block"
-    assert body["decision_zh"] == "暫緩出金並啟動人工審查"
+    assert body["decision"] == "review"
+    assert body["decision_zh"] == "加強審查（EDD）"
     assert len(body["associations"]) == 6
     assert body["str_draft_zh"]
     assert body["evidence"]["motif_hits"] == []  # 自身不命中任何圖樣，這是整個 Demo 的論點

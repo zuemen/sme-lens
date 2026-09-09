@@ -155,6 +155,23 @@ def test_credit_rejects_negative_exposure_and_group_id():
     assert client.post("/credit", json={"target": "泰昇精密", "group_id": -1}).status_code == 422
 
 
+def test_group_unattributed_respects_name_normalisation():
+    """曝險名稱多打一個空白，不得被誤報為「不在名冊中」。"""
+    response = client.post(
+        "/group",
+        json={
+            "affiliations": [
+                {"company": "甲公司", "person": "王小明"},
+                {"company": "乙公司", "person": "王小明"},
+            ],
+            "exposures": {"甲公司 ": 1_000_000, "查無此公司": 500_000},
+        },
+    )
+
+    body = response.json()
+    assert body["unattributed"] == ["查無此公司"]
+
+
 def test_group_rejects_oversized_roster():
     """名冊筆數需設上限：build_company_graph 對共用同一人的公司是 O(n²)。"""
     response = client.post(

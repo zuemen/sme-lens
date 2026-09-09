@@ -43,6 +43,7 @@ from smelens.credit.group import (
     detect_groups,
     group_exposure,
     hidden_links,
+    normalise_name,
 )
 from smelens.credit.opinion import generate_credit_opinion, run_sme_pipeline
 from smelens.data import elliptic, scenario, sme_scenario, tron
@@ -430,7 +431,9 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
     totals = group_exposure(groups, req.exposures)
     # group_exposure 會靜默略過不在名冊中的公司。對銀行而言那是「曝險憑空消失」，
     # 是本系統最不該有的行為——改為明確列名回報，讓授信人員自己判斷該補名冊還是視為單獨歸戶。
-    unattributed = sorted(c for c in req.exposures if c not in groups)
+    unattributed = sorted(
+        c for c in req.exposures if normalise_name(c) not in groups
+    )
     return {
         "groups": groups,
         "exposures": {str(gid): amount for gid, amount in totals.items()},

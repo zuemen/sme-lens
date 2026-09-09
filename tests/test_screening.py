@@ -1,6 +1,7 @@
 """出金審查引擎與 50 萬 USDT 劇本圖之整合測試。"""
 
 import networkx as nx
+import pytest
 
 from smelens.data.scenario import (
     NORMAL_TARGET,
@@ -60,12 +61,21 @@ def test_association_score_decay():
     assert abs(association_score([three], decay=0.6) - 0.36) < 1e-9
 
 
-def test_screen_blocks_suspicious_and_passes_normal():
+def test_screen_reviews_suspicious_and_passes_normal():
+    """可疑出金進入加強審查、正常出金放行。
+
+    此處刻意不是 block：劇本中的出金地址本身不命中任何圖樣、也不在黑名單上
+    （「由手法找地址」正是本情境的主張），故其 self_score 僅 0.149，全部的指控
+    來自二階關聯鏈。先前之所以達到 block，是因為社群風險比被固定成 1.0 而灌高
+    了自身分數；該缺陷修正後，對一個自身無結構異常的地址給予 EDD 而非硬擋，
+    才是站得住腳的風險立場。門檻未動。
+    """
     g = load_withdrawal_scenario()
     bad = screen_withdrawal(g, WITHDRAWAL_TARGET, 500_000, request_id="T-001")
     ok = screen_withdrawal(g, NORMAL_TARGET, 500_000)
-    assert bad["decision"] == "block"
-    assert bad["risk_score"] >= 0.7
+    assert bad["decision"] == "review"
+    assert bad["self_score"] == pytest.approx(0.1490, abs=1e-4)
+    assert bad["association_score"] == pytest.approx(0.6000, abs=1e-4)
     assert "2 階資金關聯" in bad["narrative_zh"]
     assert ok["decision"] == "pass"
     assert ok["str_draft_zh"] is None
