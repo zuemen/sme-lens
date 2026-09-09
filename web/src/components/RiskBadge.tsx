@@ -1,6 +1,6 @@
 import type { RiskLabel } from '../api/types'
 
-const LABEL_ZH: Record<RiskLabel, string> = {
+export const RISK_LABEL_ZH: Record<RiskLabel, string> = {
   high: '高風險',
   medium: '中風險',
   low: '低風險',
@@ -23,7 +23,7 @@ export function RiskBadge({ score, label }: { score: number; label: RiskLabel })
         {score.toFixed(2)}
       </span>
       <span className="text-sm" style={{ color: riskColor(label) }}>
-        {LABEL_ZH[label]}
+        {RISK_LABEL_ZH[label]}
       </span>
     </span>
   )

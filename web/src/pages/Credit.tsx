@@ -4,7 +4,7 @@ import { CREDIT_SNAPSHOT } from '../api/snapshot'
 import type { AttentionLabel, CreditOpinion } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
 import { Panel } from '../components/Panel'
-import { riskColor } from '../components/RiskBadge'
+import { RISK_LABEL_ZH, riskColor } from '../components/RiskBadge'
 import { GraphView } from '../graph/GraphView'
 
 const TARGETS = [
@@ -16,12 +16,6 @@ const ATTENTION_COLOR: Record<AttentionLabel, string> = {
   watch: 'var(--color-risk-high)',
   caution: 'var(--color-risk-med)',
   normal: 'var(--color-risk-low)',
-}
-
-const RISK_LABEL_ZH: Record<'high' | 'medium' | 'low', string> = {
-  high: '高風險',
-  medium: '中風險',
-  low: '低風險',
 }
 
 const CENTRALITY_ZH: Record<string, string> = {
@@ -136,7 +130,7 @@ export default function Credit() {
               <div>
                 <div className="text-xs text-muted">關注等級</div>
                 <div
-                  className="mt-1 text-3xl font-semibold"
+                  className="mt-1 text-2xl font-semibold"
                   style={{ color: ATTENTION_COLOR[result.label] }}
                 >
                   {result.label_zh}
@@ -145,7 +139,7 @@ export default function Credit() {
               <div>
                 <div className="text-xs text-muted">授信關注分數</div>
                 <div
-                  className="tabular mt-1 text-2xl"
+                  className="tabular mt-1 text-xl"
                   style={{ color: ATTENTION_COLOR[result.label] }}
                 >
                   {result.attention_score.toFixed(2)}
@@ -153,14 +147,14 @@ export default function Credit() {
               </div>
               <div>
                 <div className="text-xs text-muted">網絡信用分</div>
-                <div className="tabular mt-1 text-2xl">{result.network_credit.toFixed(4)}</div>
+                <div className="tabular mt-1 text-xl">{result.network_credit.toFixed(4)}</div>
               </div>
             </div>
           </Panel>
 
           <Panel title="建議">
             <p
-              className="rounded border-l-4 pl-4 text-lg font-semibold leading-relaxed text-ink"
+              className="rounded border-l-4 pl-4 text-3xl font-semibold leading-relaxed text-ink"
               style={{ borderColor: ATTENTION_COLOR[result.label] }}
             >
               {result.recommendation_zh}
@@ -171,8 +165,8 @@ export default function Credit() {
             <p className="text-sm leading-relaxed text-muted">{result.narrative_zh}</p>
           </Panel>
 
-          {result.motif_hits.length > 0 && (
-            <Panel title="命中企金風險圖樣">
+          <Panel title="命中企金風險圖樣">
+            {result.motif_hits.length > 0 ? (
               <ul className="space-y-3 text-sm">
                 {result.motif_hits.map((hit) => (
                   <li key={`${hit.motif}-${hit.center}`} className="border-l-2 border-line pl-4">
@@ -180,8 +174,12 @@ export default function Credit() {
                   </li>
                 ))}
               </ul>
-            </Panel>
-          )}
+            ) : (
+              <p className="text-sm text-muted">
+                未命中任何企金風險圖樣——本公司在關係圖上未出現循環交易、空殼中介或買方集中的結構特徵。
+              </p>
+            )}
+          </Panel>
 
           <Panel title="結構證據">
             <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
