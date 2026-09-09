@@ -1,13 +1,20 @@
-"""ChainLens FastAPI 服務。
+"""SME Lens FastAPI 服務。
 
-POST /score：輸入 TRON 地址或 Elliptic tx_id，回傳風險分數與結構證據。
+企金授信分支：
+    POST /credit：輸入企業名稱，回傳授信意見書（網絡信用分、關注分數、
+                  結構證據、中文敘事、建議與關係圖譜）。
+    POST /group ：輸入公司—自然人名冊，回傳集團歸戶、各集團曝險，
+                  以及客戶未申報的隱性關聯。
+
+科技防詐分支（沿用自 ChainLens）：
+    POST /score 、/screen、/graph：虛擬資產詐騙金流風險評分與出金審查。
 
 curl 範例：
-    curl -X POST http://localhost:8000/score \
+    curl -X POST http://localhost:8000/credit \
       -H "Content-Type: application/json" \
-      -d '{"address": "TXYZ...", "mode": "example"}'
+      -d '{"target": "泰昇精密"}'
 
-啟動：uvicorn smelens.api.main:app --port 8000（或 make api）
+啟動：./.venv/Scripts/python.exe -m uvicorn smelens.api.main:app --port 8000
 OpenAPI 文件：http://localhost:8000/docs
 """
 
@@ -27,7 +34,15 @@ from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field, model_validator
 
 from smelens.api.serialize import graph_to_json, sna_table
-from smelens.data import elliptic, scenario, tron
+from smelens.credit.group import (
+    Affiliation,
+    build_company_graph,
+    detect_groups,
+    group_exposure,
+    hidden_links,
+)
+from smelens.credit.opinion import generate_credit_opinion, run_sme_pipeline
+from smelens.data import elliptic, scenario, sme_scenario, tron
 from smelens.explain.evidence import PipelineResult, generate_evidence, run_pipeline
 from smelens.explain.screening import screen_withdrawal
 
@@ -267,4 +282,95 @@ def score(req: ScoreRequest, x_api_key: str | None = Header(default=None)) -> di
         "risk_score": evidence["score"],
         "label": evidence["label"],
         "evidence": [evidence],
+    }
+
+
+class CreditRequest(BaseModel):
+    """授信意見書請求：target 為劇本圖中的企業名稱。"""
+
+    target: str = Field(description="授信對象企業名稱")
+    group_id: int | None = Field(default=None, description="歸戶集團編號（選配）")
+    group_exposure_twd: float | None = Field(
+        default=None, description="該集團授信曝險合計（新台幣元，選配）"
+    )
+
+
+class AffiliationInput(BaseModel):
+    """一筆公司—自然人關係。"""
+
+    company: str
+    person: str
+    role: str = "董監事"
+
+
+class GroupRequest(BaseModel):
+    """集團歸戶請求。"""
+
+    affiliations: list[AffiliationInput] = Field(description="公司—自然人關係名冊")
+    declared_groups: dict[str, str] = Field(
+        default_factory=dict, description="客戶自行申報的集團代號"
+    )
+    exposures: dict[str, float] = Field(
+        default_factory=dict, description="各公司授信餘額（新台幣元）"
+    )
+
+
+@app.post("/credit")
+def credit(req: CreditRequest, x_api_key: str | None = Header(default=None)) -> dict[str, Any]:
+    """授信意見書：回傳網絡信用分、關注分數、結構證據、中文敘事與圖譜。"""
+    _check_api_key(x_api_key)
+    g = sme_scenario.load_supply_chain_scenario()
+    if req.target not in g:
+        raise HTTPException(status_code=404, detail=f"企業 {req.target} 不在關係圖中")
+
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+    opinion = generate_credit_opinion(
+        req.target,
+        g,
+        sna_df,
+        partition,
+        risk_ratios,
+        motif_hits,
+        group_id=req.group_id,
+        group_exposure_twd=req.group_exposure_twd,
+    )
+    # graph_to_json 以 "score"／"label" 著色；授信意見書用 attention_score，
+    # 且 label 值域是 watch/caution/normal。兩者都有預設值不會拋錯，漏接會
+    # 靜默把整張圖染成 0 分——比報錯更難察覺，故在此明確補上相容鍵。
+    evidences: dict[Any, dict[str, Any]] = {}
+    for node in g.nodes():
+        item = generate_credit_opinion(node, g, sna_df, partition, risk_ratios, motif_hits)
+        item["score"] = item["attention_score"]
+        evidences[node] = item
+
+    opinion["graph"] = graph_to_json(
+        g,
+        evidences,
+        sna_df,
+        motif_centers={hit.center for hit in motif_hits},
+        role_zh=sme_scenario.ROLE_ZH,
+    )
+    return opinion
+
+
+@app.post("/group")
+def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> dict[str, Any]:
+    """集團歸戶：回傳歸戶結果、各集團曝險與未申報的隱性關聯。"""
+    _check_api_key(x_api_key)
+    if not req.affiliations:
+        raise HTTPException(status_code=400, detail="affiliations 不得為空")
+
+    company_graph = build_company_graph(
+        Affiliation(company=a.company, person=a.person, role=a.role) for a in req.affiliations
+    )
+    groups = detect_groups(company_graph)
+    totals = group_exposure(groups, req.exposures)
+    # group_exposure 會靜默略過不在名冊中的公司。對銀行而言那是「曝險憑空消失」，
+    # 是本系統最不該有的行為——改為明確列名回報，讓授信人員自己判斷該補名冊還是視為單獨歸戶。
+    unattributed = sorted(c for c in req.exposures if c not in groups)
+    return {
+        "groups": groups,
+        "exposures": {str(gid): amount for gid, amount in totals.items()},
+        "hidden_links": hidden_links(company_graph, req.declared_groups),
+        "unattributed": unattributed,
     }

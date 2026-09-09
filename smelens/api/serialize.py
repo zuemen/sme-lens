@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import networkx as nx
@@ -44,6 +45,7 @@ def graph_to_json(
     motif_centers: set[Any],
     degraded: bool = False,
     limit: int = MAX_GRAPH_NODES,
+    role_zh: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """圖 + 全節點證據 → 前端圖譜 JSON。
 
@@ -52,7 +54,11 @@ def graph_to_json(
 
     節點數超過 limit 時依風險分數截斷，並在 meta 標示 truncated 與原始節點數，
     讓前端能誠實告知使用者看到的不是全圖。
+
+    role_zh：角色代碼 → 中文名稱的對照表。預設為 AML 劇本的 ROLE_ZH；企金
+    劇本圖須傳入 sme_scenario.ROLE_ZH，否則角色會回退成英文鍵。
     """
+    role_names = ROLE_ZH if role_zh is None else role_zh
     pagerank = sna_df["pagerank"].to_dict() if not sna_df.empty else {}
     retained = _retained_nodes(g, evidences, limit)
     retained_set = set(retained)
@@ -66,7 +72,7 @@ def graph_to_json(
             {
                 "id": str(node),
                 "role": role,
-                "role_zh": ROLE_ZH.get(role, role),
+                "role_zh": role_names.get(role, role),
                 "score": evidence.get("score", 0.0),
                 "label": evidence.get("label", "low"),
                 "is_motif_center": node in motif_centers,
