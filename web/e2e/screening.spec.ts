@@ -7,14 +7,18 @@ test('出金審查 Demo 全流程', async ({ page }) => {
 
   await page.getByRole('button', { name: '執行出金審查' }).click()
 
-  // 決策卡：綜合風險 0.73 → 暫緩出金
+  // 決策卡：綜合風險 0.66 → 加強審查（EDD）
+  // 此處刻意不是 block：劇本中的出金地址本身不命中任何圖樣、也不在黑名單上，
+  // self_score 僅 0.149，全部的指控來自二階關聯鏈。先前之所以達到 block，是因為
+  // 社群風險比被固定成 1.0 而灌高了自身分數；該缺陷修正後，對一個自身無結構異常
+  // 的地址給予 EDD 而非硬擋，才是站得住腳的風險立場。門檻未動。
   // exact: true — narrative_zh 與 STR 草稿內文也會提到同一組數字/決策文字，
   // 用 exact 鎖定決策卡本身的欄位，避免 strict-mode 因子字串命中多處而報錯。
-  await expect(page.getByText('0.73', { exact: true })).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByText('暫緩出金並啟動人工審查', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.66', { exact: true })).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('加強審查（EDD）', { exact: true })).toBeVisible()
 
-  // 論點：自身只有 0.33，風險來自關聯的 0.60
-  await expect(page.getByText('0.33', { exact: true })).toBeVisible()
+  // 論點：自身只有 0.15，風險來自關聯的 0.60
+  await expect(page.getByText('0.15', { exact: true })).toBeVisible()
   await expect(page.getByText('0.60', { exact: true })).toBeVisible()
 
   // 圖譜有渲染出來
