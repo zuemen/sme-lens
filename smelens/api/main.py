@@ -77,6 +77,10 @@ RAW_DIR = Path("data/raw")
 # elliptic 模式全圖與管線結果快取（203k 節點載入＋SNA 需數分鐘，絕不可每請求重算）
 _elliptic_cache: dict[str, tuple[nx.DiGraph, PipelineResult]] = {}
 
+# graph_to_json 與前端 RiskLabel 用的是 high/medium/low；授信意見書用 watch/caution/
+# normal。兩邊都有 .get 預設值，漏接不會拋錯、只會靜默吐出前端不認得的標籤。
+_GRAPH_LABEL_ZH = {"watch": "high", "caution": "medium", "normal": "low"}
+
 
 def _check_api_key(x_api_key: str | None) -> None:
     """設定 SMELENS_API_KEY 環境變數時，要求請求帶相同的 X-API-Key 標頭。"""
@@ -334,13 +338,17 @@ def credit(req: CreditRequest, x_api_key: str | None = Header(default=None)) -> 
         group_id=req.group_id,
         group_exposure_twd=req.group_exposure_twd,
     )
-    # graph_to_json 以 "score"／"label" 著色；授信意見書用 attention_score，
-    # 且 label 值域是 watch/caution/normal。兩者都有預設值不會拋錯，漏接會
-    # 靜默把整張圖染成 0 分——比報錯更難察覺，故在此明確補上相容鍵。
     evidences: dict[Any, dict[str, Any]] = {}
     for node in g.nodes():
-        item = generate_credit_opinion(node, g, sna_df, partition, risk_ratios, motif_hits)
+        item = dict(
+            opinion
+            if node == req.target
+            else generate_credit_opinion(node, g, sna_df, partition, risk_ratios, motif_hits)
+        )
+        # 目標公司直接沿用上面那份意見書（含歸戶集團脈絡），避免同一家公司在同一個
+        # 回應裡出現兩份敘事不一致的文件；同時補上 graph_to_json 著色所需的相容鍵。
         item["score"] = item["attention_score"]
+        item["label"] = _GRAPH_LABEL_ZH[item["label"]]
         evidences[node] = item
 
     opinion["graph"] = graph_to_json(

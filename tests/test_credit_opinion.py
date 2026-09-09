@@ -182,3 +182,34 @@ def test_credit_opinion_carries_group_context():
     assert opinion["group_id"] == 0
     assert opinion["group_exposure_twd"] == 50_000_000.0
     assert "集團" in opinion["narrative_zh"]
+
+
+def test_credit_opinion_recommendation_matches_label():
+    """行員真正據以行動的是建議字串——把 watch 與 normal 的建議對調也必須有測試會紅。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    watch = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+    normal = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert watch["recommendation_zh"].startswith("建議暫緩核貸")
+    assert normal["recommendation_zh"].startswith("結構面未見異常")
+
+
+def test_credit_opinion_does_not_flag_clean_bystanders():
+    """未命中任何圖樣的旁觀公司不得被列為留意以上——否則等於全圖標紅，訊號歸零。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    for company in ("鴻寶電子", "中部機電", "大安工業", "永康鋼鐵", "南方塑膠", "華隆貿易"):
+        opinion = generate_credit_opinion(
+            company, g, sna_df, partition, risk_ratios, motif_hits
+        )
+        assert opinion["motif_hits"] == [], f"{company} 不應命中任何圖樣"
+        assert opinion["label"] == "normal", (
+            f"{company} 未命中圖樣卻被評為 {opinion['label']}（{opinion['attention_score']}）"
+        )

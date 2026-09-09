@@ -106,7 +106,7 @@ def detect_shell_intermediary(
 
 
 def detect_buyer_concentration(
-    g: nx.DiGraph, min_ratio: float = 0.7, min_revenue: float = 0.0
+    g: nx.DiGraph, min_ratio: float = 0.7, min_revenue: float = 0.0, min_buyers: int = 2
 ) -> list[MotifHit]:
     """偵測單一買方營收集中：逾 min_ratio 的收入來自同一家買方。
 
@@ -116,6 +116,11 @@ def detect_buyer_concentration(
 
     收入定義為 in-edges 金額總和（邊方向 u → v 表示 u 付款給 v）。
     營收低於 min_revenue 者跳過，避免對微型往來過度反應。
+
+    **只觀察到一個買方時一律不計**（min_buyers 預設 2）：集中度是分布的性質，
+    只有一筆觀測值時「100% 集中」是圖資不完整的假象，不是客戶結構風險。真實
+    供應鏈圖裡大量節點只有一條入邊，若不設此門檻，本圖樣會在整張圖上到處命中，
+    把真正該被看見的申請人淹沒在雜訊裡。
     """
     hits: list[MotifHit] = []
     for node in g.nodes():
@@ -123,7 +128,7 @@ def detect_buyer_concentration(
         for u, _, d in g.in_edges(node, data=True):
             by_buyer[u] = by_buyer.get(u, 0.0) + float(d.get("amount", 0.0))
         revenue = sum(by_buyer.values())
-        if revenue <= 0 or revenue < min_revenue:
+        if revenue <= 0 or revenue < min_revenue or len(by_buyer) < min_buyers:
             continue
         # 金額相同時以字串排序決勝，確保結果穩定可重現
         top_buyer = max(by_buyer, key=lambda b: (by_buyer[b], str(b)))

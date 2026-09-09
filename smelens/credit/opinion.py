@@ -33,15 +33,17 @@ def _motif_sentence(node: Any, hit: Any) -> str:
     其餘圖樣的 center 本來就是被指認的那家公司，沿用原敘事即可。
     """
     text = hit.description_zh.rstrip("。")
-    if hit.motif != "cycle_trade" or hit.center == node or node not in hit.nodes:
-        return text
-    start = hit.nodes.index(node)
-    ordered = hit.nodes[start:] + hit.nodes[:start]
-    path_zh = " → ".join(str(n) for n in [*ordered, node])
-    return (
-        f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}），"
-        "符合循環交易／資金迴流圖樣"
-    )
+    if hit.motif == "cycle_trade" and hit.center != node and node in hit.nodes:
+        start = hit.nodes.index(node)
+        ordered = hit.nodes[start:] + hit.nodes[:start]
+        path_zh = " → ".join(str(n) for n in [*ordered, node])
+        return (
+            f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}），"
+            "符合循環交易／資金迴流圖樣"
+        )
+    # 其餘情形 center 就是本公司，把「節點 X」改寫為「本公司」——「節點」是圖論
+    # 術語，出現在寫給授信人員的文件裡會讓讀者出戲。
+    return text.replace(f"節點 {node} ", "本公司 ", 1)
 
 
 _RECOMMENDATION_ZH = {
@@ -61,7 +63,12 @@ def run_sme_pipeline(g: nx.DiGraph) -> PipelineResult:
     sna_df = compute_sna_features(g)
     partition = detect_communities(g)
     motif_hits = detect_all_sme(g)
-    labels = {hit.center: 1 for hit in motif_hits}
+    # 全節點都標記（命中中心為 1、其餘為 0），社群風險比才會是「該社群有多少比例
+    # 的成員是風險中心」這個真正有鑑別力的比例。只標記命中者會讓分母等於分子，
+    # 任何含命中的社群都固定得到 1.0，等於對整個社群加一個無資訊的常數。
+    labels = dict.fromkeys(g.nodes(), 0)
+    for hit in motif_hits:
+        labels[hit.center] = 1
     risk_ratios = community_risk_ratio(partition, labels)
     return sna_df, partition, risk_ratios, motif_hits
 
@@ -97,12 +104,20 @@ def network_credit(g: nx.DiGraph, node: Any, sna_df: pd.DataFrame) -> float:
 
     百分位採**嚴格小於**：真實圖上多數節點的 betweenness 為 0、degree 為 1，
     若用小於等於，這批節點會被算進第 85+ 百分位而虛胖成「結構核心」。
+
+    無收入者（in-degree 為 0，純買方／資金源頭）沒有「買方結構」可言，多樣性
+    未定義而非 0，故只取結構中心性百分位，不併入對手多樣性。
     """
     percentiles = {
         column: float((sna_df[column] < sna_df.at[node, column]).mean())
         for column in sna_df.columns
     }
     centrality = sum(percentiles.values()) / len(percentiles)
+    if g.in_degree(node) == 0:
+        # 無收入者（純買方／資金源頭）沒有「買方結構」可言，多樣性是未定義而非 0。
+        # 以 0 併入平均會把這類節點一律壓成低信用——那是資料缺席，不是信用不佳，
+        # 且與「讓沒有漂亮財報的好公司被看見」的主張背道而馳。
+        return round(centrality, 4)
     return round(0.5 * centrality + 0.5 * counterparty_diversity(g, node), 4)
 
 
@@ -120,9 +135,9 @@ def generate_credit_opinion(
 ) -> dict[str, Any]:
     """對單一企業產生授信意見書。
 
-    attention_score = 0.5 × 圖樣命中 + 0.3 × (1 − 網絡信用) + 0.2 × 社群風險比；
-    提供 GNN model_score 時改為 0.5 × 模型 + 0.5 × 規則分數（與 ChainLens
-    的模型／規則融合慣例一致）。
+    attention_score = 0.7×圖樣強度 + 0.2×(1−網絡信用) + 0.1×社群風險比；圖樣強度為
+    0 紅旗 0、1 紅旗 0.55、2 種以上 1.0；提供 GNN model_score 時改為 0.5 × 模型
+    + 0.5 × 規則分數（與 ChainLens 的模型／規則融合慣例一致）。
 
     **圖樣歸屬規則**：一般圖樣只計 center，避免周邊成員連坐；但 cycle_trade
     例外——封閉資金環上的**每一個**成員都是循環交易的參與者，不是被動的
@@ -145,7 +160,11 @@ def generate_credit_opinion(
         for column in sna_df.columns
     }
 
-    rule_score = 0.5 * (1.0 if relevant else 0.0) + 0.3 * (1.0 - credit) + 0.2 * risk_ratio
+    # 相異圖樣種類數：兩個以上彼此獨立的結構紅旗同時成立，比單一紅旗特別嚴重
+    # 更難用巧合解釋，故直接給滿分。這條規則對授信人員是可以講清楚的。
+    flag_kinds = len({hit.motif for hit in relevant})
+    motif_strength = 0.0 if flag_kinds == 0 else (0.55 if flag_kinds == 1 else 1.0)
+    rule_score = 0.7 * motif_strength + 0.2 * (1.0 - credit) + 0.1 * risk_ratio
     score = 0.5 * model_score + 0.5 * rule_score if model_score is not None else rule_score
     score = min(max(score, 0.0), 1.0)
     label = "watch" if score >= 0.7 else "caution" if score >= 0.4 else "normal"
@@ -160,10 +179,13 @@ def generate_credit_opinion(
         narrative.append(f"命中企金風險圖樣：{sentences}。")
     else:
         narrative.append("未命中任何企金風險圖樣。")
-    narrative.append(
-        f"交易對手多樣性 {diversity:.2f}"
-        f"（{'買方高度集中' if diversity < 0.5 else '買方結構分散'}）。"
-    )
+    if g.in_degree(node) == 0:
+        narrative.append("本公司於本圖中無收入紀錄，買方結構無從評估。")
+    else:
+        narrative.append(
+            f"交易對手多樣性 {diversity:.2f}"
+            f"（{'買方高度集中' if diversity < 0.5 else '買方結構分散'}）。"
+        )
     if group_id is not None:
         exposure_text = (
             f"，該集團授信曝險合計 {group_exposure_twd:,.0f} 元"

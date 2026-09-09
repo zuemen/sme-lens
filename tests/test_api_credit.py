@@ -112,3 +112,25 @@ def test_group_endpoint_rejects_empty_affiliations():
     response = client.post("/group", json={"affiliations": []})
 
     assert response.status_code == 400
+
+
+def test_credit_graph_labels_use_frontend_vocabulary():
+    """圖譜節點的 label 必須是前端 RiskLabel 認得的 high/medium/low，頂層仍為 watch。"""
+    response = client.post("/credit", json={"target": CREDIT_APPLICANT})
+
+    body = response.json()
+    assert body["label"] == "watch"
+    assert {node["label"] for node in body["graph"]["nodes"]} <= {"high", "medium", "low"}
+
+
+def test_credit_graph_target_narrative_matches_top_level():
+    """同一家公司在同一個回應裡不得出現兩份不同的敘事。"""
+    response = client.post(
+        "/credit",
+        json={"target": CREDIT_APPLICANT, "group_id": 0, "group_exposure_twd": 50000000},
+    )
+
+    body = response.json()
+    target_node = next(n for n in body["graph"]["nodes"] if n["id"] == CREDIT_APPLICANT)
+    assert target_node["narrative_zh"] == body["narrative_zh"]
+    assert "歸戶集團編號 #0" in target_node["narrative_zh"]

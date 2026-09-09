@@ -123,6 +123,7 @@ def test_detect_buyer_concentration_respects_min_revenue():
     """營收規模低於門檻者不納入評估，避免對微型往來過度反應。"""
     g = nx.DiGraph()
     g.add_edge("大買方", "微型廠商", amount=50_000.0)
+    g.add_edge("小買方", "微型廠商", amount=5_000.0)  # 兩個買方，但總營收僅 55,000
 
     assert detect_buyer_concentration(g, min_ratio=0.7, min_revenue=1_000_000.0) == []
 
@@ -136,9 +137,23 @@ def test_detect_all_sme_combines_three_motifs():
     # 空殼過水
     g.add_edge("來源", "空殼", amount=3_000_000.0)
     g.add_edge("空殼", "去向", amount=2_970_000.0)
+    g.add_edge("小買方", "去向", amount=30_000.0)  # 去向 有兩個買方，其中一個佔 99%
 
     motifs = {h.motif for h in detect_all_sme(g)}
 
     assert "cycle_trade" in motifs
     assert "shell_intermediary" in motifs
     assert "buyer_concentration" in motifs
+
+
+def test_detect_buyer_concentration_ignores_single_observed_buyer():
+    """只觀察到一個買方時，100% 集中是圖資不完整的假象，不是客戶結構風險。
+
+    真實供應鏈圖裡大量節點只有一條入邊；若不排除，本圖樣會在整張圖上到處命中，
+    把真正該被看見的申請人淹沒。
+    """
+    g = nx.DiGraph()
+    g.add_edge("唯一買方", "廠商", amount=8_000_000.0)
+
+    assert detect_buyer_concentration(g) == []
+    assert len(detect_buyer_concentration(g, min_buyers=1)) == 1
