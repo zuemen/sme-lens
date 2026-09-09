@@ -1,8 +1,10 @@
 """產生前端離線快照：現場斷網或後端冷啟動逾時時，demo 仍能演完。
 
 Windows 下務必以 PYTHONIOENCODING=utf-8 執行，否則 stdout 會弄壞中文。
-用法：
-    PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/make_snapshots.py
+`smelens` 未以 editable 方式裝進 .venv，故需一併指定 PYTHONPATH。
+
+用法（在 repo 根目錄執行）：
+    PYTHONIOENCODING=utf-8 PYTHONPATH=. ./.venv/Scripts/python.exe scripts/make_snapshots.py
 """
 
 from __future__ import annotations
