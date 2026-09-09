@@ -106,7 +106,9 @@ export interface CreditMotifHit {
 export interface CreditOpinion {
   target: string
   attention_score: number
-  network_credit: number
+  /** 無收入者（純買方，in-degree 為 0）沒有「買方結構」可評估，後端回傳 null 而非 0——
+   * 未評估不是最差評估。畫面須對 null 明確說明原因，不能當數字硬 toFixed。 */
+  network_credit: number | null
   label: AttentionLabel
   label_zh: string
   counterparty_diversity: number

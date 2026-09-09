@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, postGraph } from '../api/client'
 import type { GraphNode, WorkbenchPayload } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
@@ -23,27 +23,49 @@ export default function Workbench() {
   const [selected, setSelected] = useState<GraphNode | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 供 aria-live 區域播報非視覺回饋：查詢中／結果就緒／失敗，按鈕文字改變本身
+  // 螢幕報讀器聽不到。
+  const [announcement, setAnnouncement] = useState('')
+  const resultsRef = useRef<HTMLDivElement>(null)
+  // 首次掛載時的自動載入不搬焦點——那不是使用者按下按鈕觸發的，搬焦點反而是
+  // 意外地在頁面剛進來時劫走焦點；只有使用者按下「抓取真實金流」／「用內建
+  // 範例圖」後才移動焦點到結果標題（FIX 5）。
+  const shouldFocusRef = useRef(false)
 
-  async function load(mode: 'example' | 'tron') {
+  async function load(mode: 'example' | 'tron', options: { manual?: boolean } = {}) {
+    const manual = options.manual ?? true
     setLoading(true)
     setError(null)
+    setAnnouncement(mode === 'tron' ? '查詢中，正在抓取真實金流…' : '查詢中，正在載入內建範例圖…')
     try {
       const next = await postGraph(mode === 'tron' ? { mode, address } : { mode })
       setPayload(next)
       setSource(mode === 'tron' ? { kind: 'tron', address } : { kind: 'example' })
       setSelected(null)
+      setAnnouncement('金流圖譜已載入。')
+      if (manual) shouldFocusRef.current = true
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : '載入失敗，請稍後再試。')
+      const detail = err instanceof ApiError ? err.detail : '載入失敗，請稍後再試。'
+      setError(detail)
+      setAnnouncement(`查詢失敗：${detail}`)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    void load('example')
+    void load('example', { manual: false })
     // 只在首次掛載時載入內建範例圖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // FIX 5：使用者按下查詢按鈕、結果出現後，把焦點移到結果區第一個標題。
+  useEffect(() => {
+    if (!payload || !shouldFocusRef.current) return
+    shouldFocusRef.current = false
+    const heading = resultsRef.current?.querySelector<HTMLElement>('h2')
+    heading?.focus()
+  }, [payload])
 
   const handleSelect = useCallback(
     (id: string) => setSelected(payload?.nodes.find((node) => node.id === id) ?? null),
@@ -54,6 +76,10 @@ export default function Workbench() {
 
   return (
     <div className="space-y-6">
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+
       <div>
         <h1 className="text-2xl font-semibold">金流圖譜工作台</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
@@ -107,7 +133,7 @@ export default function Workbench() {
       )}
 
       {payload && (
-        <>
+        <div ref={resultsRef} className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
             <Panel
               title={`金流圖譜 · ${sourceLabel(source)}（${payload.meta.node_count} 節點 / ${payload.meta.edge_count} 邊）`}
@@ -195,7 +221,7 @@ export default function Workbench() {
               </table>
             </div>
           </Panel>
-        </>
+        </div>
       )}
     </div>
   )

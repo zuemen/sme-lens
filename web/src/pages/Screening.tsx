@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError, postScreen } from '../api/client'
 import { SCREENING_SNAPSHOT } from '../api/snapshot'
 import type { ScreenResult } from '../api/types'
@@ -26,13 +26,19 @@ export default function Screening() {
   const [offline, setOffline] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 供 aria-live 區域播報非視覺回饋：查詢中／結果就緒／失敗，按鈕文字改變本身
+  // 螢幕報讀器聽不到。
+  const [announcement, setAnnouncement] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
 
   async function run() {
     setLoading(true)
     setError(null)
+    setAnnouncement('審查中，正在執行出金審查…')
     try {
       setResult(await postScreen(target, amount))
       setOffline(false)
+      setAnnouncement('出金審查結果已產生。')
     } catch (err) {
       // 完全無法連線（斷網/DNS/CORS）或後端本身出錯（5xx，含 Vercel 冷啟動逾時）時
       // 退回內建快照，讓現場演示不中斷；畫面會明確標示為離線快照。
@@ -45,16 +51,27 @@ export default function Screening() {
       ) {
         setResult(SCREENING_SNAPSHOT)
         setOffline(true)
+        setAnnouncement('無法連線即時服務，已改用內建備援資料顯示審查結果。')
       } else {
         // 清掉上一次的結果，避免畫面同時顯示錯誤條與舊的（且可能是別的目標地址的）決策卡。
         setResult(null)
         setOffline(false)
-        setError(err instanceof ApiError ? err.detail : '審查失敗，請稍後再試。')
+        const detail = err instanceof ApiError ? err.detail : '審查失敗，請稍後再試。'
+        setError(detail)
+        setAnnouncement(`查詢失敗：${detail}`)
       }
     } finally {
       setLoading(false)
     }
   }
+
+  // FIX 5：查詢結果出現後，把焦點移到結果區第一個標題（「審查決策」），螢幕報讀器
+  // 使用者按下查詢按鈕後不必自己往下找。
+  useEffect(() => {
+    if (!result) return
+    const heading = rootRef.current?.querySelector<HTMLElement>('h2')
+    heading?.focus()
+  }, [result])
 
   function downloadStr() {
     if (!result?.str_draft_zh) return
@@ -67,7 +84,11 @@ export default function Screening() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={rootRef}>
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+
       <div>
         <h1 className="text-2xl font-semibold">出金審查</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
@@ -120,6 +141,20 @@ export default function Screening() {
 
       {offline && (
         <ErrorNotice message="目前顯示的是內建離線快照（案例金額固定為 500,000 USDT，與上方輸入的申請金額無關），非即時查詢結果。" />
+      )}
+
+      {result?.insufficient_data && (
+        <ErrorNotice message="此出金目標地址在鏈上查無交易紀錄（全新地址或無 USDT 歷史），沒有結構證據可供評估——以下的「放行」是資料不足下的預設結果，不是「查過確認乾淨」，仍建議併同其他風控情資人工判斷。" />
+      )}
+
+      {result?.graph.meta.truncated && (
+        <ErrorNotice
+          message={`本次金流圖節點數過多，僅保留風險分數最高的 ${result.graph.meta.node_count} 個節點（原始共 ${result.graph.meta.total_node_count} 個）。下方的關聯證據鏈與結構證據皆基於這張截斷後的圖計算，可能未涵蓋原始金流圖的全部連結。`}
+        />
+      )}
+
+      {result?.graph.meta.degraded && (
+        <ErrorNotice message="本次金流圖來源已降級（即時資料無法完整取得，改用替代資料計算），下方的風險分數與決策建議僅供參考，並非基於完整即時資料，請提高人工覆核比重。" />
       )}
 
       {result && (

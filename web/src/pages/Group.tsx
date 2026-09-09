@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ApiError, postGroup } from '../api/client'
 import { DEMO_ROSTER, GROUP_SNAPSHOT } from '../api/snapshot'
 import type { GroupResult } from '../api/types'
@@ -68,10 +68,15 @@ export default function Group() {
   const [offline, setOffline] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 供 aria-live 區域播報非視覺回饋：查詢中／結果就緒／失敗，按鈕文字改變本身
+  // 螢幕報讀器聽不到。
+  const [announcement, setAnnouncement] = useState('')
+  const resultsRef = useRef<HTMLDivElement>(null)
 
   async function run() {
     setLoading(true)
     setError(null)
+    setAnnouncement('歸戶中，正在執行集團歸戶…')
     try {
       setResult(
         await postGroup({
@@ -81,6 +86,7 @@ export default function Group() {
         }),
       )
       setOffline(false)
+      setAnnouncement('集團歸戶結果已產生。')
     } catch (err) {
       // 完全無法連線（斷網/DNS/CORS）或後端本身出錯（5xx，含 Vercel 冷啟動逾時）時
       // 退回內建快照，讓現場演示不中斷；畫面會明確標示為離線快照。
@@ -89,16 +95,28 @@ export default function Group() {
       if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
         setResult(GROUP_SNAPSHOT)
         setOffline(true)
+        setAnnouncement('無法連線即時服務，已改用內建備援資料顯示歸戶結果。')
       } else {
         // 清掉上一次的結果，避免畫面同時顯示錯誤條與舊的歸戶結果。
         setResult(null)
         setOffline(false)
-        setError(err instanceof ApiError ? err.detail : '執行集團歸戶失敗，請稍後再試。')
+        const detail = err instanceof ApiError ? err.detail : '執行集團歸戶失敗，請稍後再試。'
+        setError(detail)
+        setAnnouncement(`查詢失敗：${detail}`)
       }
     } finally {
       setLoading(false)
     }
   }
+
+  // FIX 5：查詢結果出現後，把焦點移到結果區第一個標題，螢幕報讀器使用者按下
+  // 「執行集團歸戶」後不必自己往下找。用 resultsRef 而非整個頁面根節點，
+  // 是因為本頁「申報名冊」表格在查詢前就已經有自己的標題，不能被誤抓為結果標題。
+  useEffect(() => {
+    if (!result) return
+    const heading = resultsRef.current?.querySelector<HTMLElement>('h2')
+    heading?.focus()
+  }, [result])
 
   const largestGroupName = largestDeclaredGroupName()
   const declaredLargestExposure = declaredGroupTotals()[largestGroupName]
@@ -120,6 +138,10 @@ export default function Group() {
 
   return (
     <div className="space-y-6">
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+
       <div>
         <h1 className="text-2xl font-semibold">集團歸戶</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
@@ -176,7 +198,7 @@ export default function Group() {
       )}
 
       {result && (
-        <>
+        <div ref={resultsRef} className="space-y-6">
           {actualGroupCount !== null &&
             actualExposureForMergedGroup !== null &&
             exposureGap !== null && (
@@ -332,7 +354,7 @@ export default function Group() {
               </ul>
             </Panel>
           )}
-        </>
+        </div>
       )}
     </div>
   )

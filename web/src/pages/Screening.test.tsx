@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
+import { SCREENING_SNAPSHOT } from '../api/snapshot'
 import Screening from './Screening'
 
 // 只 mock postScreen；ApiError 用真的 class，因為頁面用 `instanceof ApiError` 判斷。
@@ -51,5 +52,75 @@ describe('Screening 離線快照保險網（I5）', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
     expect(screen.queryByText(/離線快照/)).toBeNull()
     expect(screen.queryByText('0.66')).toBeNull()
+  })
+})
+
+describe('Screening 頁面對後端降級旗標的呈現（FIX 2）', () => {
+  beforeEach(() => {
+    mockedPostScreen.mockReset()
+  })
+
+  // insufficient_data 是後端明確標示「目標不在圖中，此為資料不足下的放行，不是查過確認乾淨」；
+  // 畫面過去完全不讀這個欄位，會讓 review 團隊看到一份看起來篤定的放行結果。
+  it('insufficient_data 為 true 時，顯示查無交易紀錄的提示，而不是靜默放行', async () => {
+    mockedPostScreen.mockResolvedValue({
+      ...SCREENING_SNAPSHOT,
+      insufficient_data: true,
+      risk_score: 0,
+      self_score: 0,
+      association_score: 0,
+      decision: 'pass',
+      decision_zh: '予以放行',
+      associations: [],
+      evidence: null,
+    })
+    render(<Screening />)
+    screen.getByRole('button', { name: '執行出金審查' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/查無交易紀錄/)).toBeDefined()
+  })
+
+  it('graph.meta.truncated 為 true 時，顯示截斷提示', async () => {
+    mockedPostScreen.mockResolvedValue({
+      ...SCREENING_SNAPSHOT,
+      graph: {
+        ...SCREENING_SNAPSHOT.graph,
+        meta: {
+          ...SCREENING_SNAPSHOT.graph.meta,
+          truncated: true,
+          node_count: 10,
+          total_node_count: 60,
+        },
+      },
+    })
+    render(<Screening />)
+    screen.getByRole('button', { name: '執行出金審查' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/節點數過多/)).toBeDefined()
+  })
+
+  it('graph.meta.degraded 為 true 時，顯示降級提示', async () => {
+    mockedPostScreen.mockResolvedValue({
+      ...SCREENING_SNAPSHOT,
+      graph: { ...SCREENING_SNAPSHOT.graph, meta: { ...SCREENING_SNAPSHOT.graph.meta, degraded: true } },
+    })
+    render(<Screening />)
+    screen.getByRole('button', { name: '執行出金審查' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/已降級/)).toBeDefined()
+  })
+
+  it('insufficient_data／truncated／degraded 皆未設定時，不顯示任何一則提示', async () => {
+    mockedPostScreen.mockResolvedValue(SCREENING_SNAPSHOT)
+    render(<Screening />)
+    screen.getByRole('button', { name: '執行出金審查' }).click()
+
+    await waitFor(() => expect(screen.getByText('0.66')).toBeDefined())
+    expect(screen.queryByText(/查無交易紀錄/)).toBeNull()
+    expect(screen.queryByText(/節點數過多/)).toBeNull()
+    expect(screen.queryByText(/已降級/)).toBeNull()
   })
 })

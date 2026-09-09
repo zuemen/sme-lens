@@ -148,4 +148,105 @@ describe('授信意見書頁', () => {
     )
     expect(screen.queryByText(/呼叫端提供/)).toBeNull()
   })
+
+  // FIX 1：network_credit 為 null 時（純買方、無被觀察到的收入），畫面不能對 null 呼叫
+  // toFixed 崩潰，也不能悄悄顯示空白——必須明確說明「未評估」與原因。
+  it('network_credit 為 null 時，明確說明未評估及原因，而不是崩潰或空白', async () => {
+    mockedPostCredit.mockResolvedValue({ ...CREDIT_SNAPSHOT, network_credit: null })
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getByText(/未評估/)).toBeDefined())
+    expect(screen.getByText(/沒有「買方結構」可供評估/)).toBeDefined()
+    // 原本的數字格式（toFixed(4) 的結果）不該出現
+    expect(screen.queryByText('0.5667')).toBeNull()
+  })
+
+  // FIX 3：demo 開場第一個動作是指著「建議」這行字，它必須是結果區第一個 Panel，
+  // 在「授信關注等級」卡片之上，而不是要往下捲才看得到。
+  it('「建議」區塊排在「授信關注等級」卡片之前', async () => {
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeDefined())
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((el) => el.textContent)
+    const suggestionIndex = headings.indexOf('建議')
+    const attentionIndex = headings.indexOf('授信關注等級')
+    expect(suggestionIndex).toBeGreaterThanOrEqual(0)
+    expect(attentionIndex).toBeGreaterThanOrEqual(0)
+    expect(suggestionIndex).toBeLessThan(attentionIndex)
+  })
+
+  // FIX 2：後端用 meta.truncated／meta.degraded 表示這份結果有保留，畫面必須把它
+  // 顯示出來，不能默默呈現一份看起來很篤定的報告。
+  it('graph.meta.truncated 為 true 時，顯示截斷提示', async () => {
+    mockedPostCredit.mockResolvedValue({
+      ...CREDIT_SNAPSHOT,
+      graph: {
+        ...CREDIT_SNAPSHOT.graph,
+        meta: { ...CREDIT_SNAPSHOT.graph.meta, truncated: true, node_count: 5, total_node_count: 20 },
+      },
+    })
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/節點數過多/)).toBeDefined()
+  })
+
+  it('graph.meta.degraded 為 true 時，顯示降級提示', async () => {
+    mockedPostCredit.mockResolvedValue({
+      ...CREDIT_SNAPSHOT,
+      graph: {
+        ...CREDIT_SNAPSHOT.graph,
+        meta: { ...CREDIT_SNAPSHOT.graph.meta, degraded: true },
+      },
+    })
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/已降級/)).toBeDefined()
+  })
+
+  it('graph.meta.truncated／degraded 皆為 false 時，不顯示這兩則提示', async () => {
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() =>
+      expect(screen.getAllByText(CREDIT_SNAPSHOT.label_zh).length).toBeGreaterThan(0),
+    )
+    expect(screen.queryByText(/節點數過多/)).toBeNull()
+    expect(screen.queryByText(/已降級/)).toBeNull()
+  })
+
+  // FIX 5：查詢中／結果就緒／失敗要有 aria-live 播報，按鈕文字改變本身螢幕報讀器聽不到。
+  it('查詢成功後，aria-live 區域播報結果就緒', async () => {
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    const live = screen.getByRole('status', { hidden: true })
+    fireEvent.click(screen.getByRole('button', { name: '產生授信意見書' }))
+
+    await waitFor(() => expect(live.textContent).toMatch(/已產生/))
+  })
+
+  // FIX 5：結果出現後，焦點應移到結果區第一個標題（「建議」），而不是停在送出按鈕上。
+  it('查詢成功後，焦點移到「建議」標題', async () => {
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: '建議' })).toBe(document.activeElement),
+    )
+  })
 })

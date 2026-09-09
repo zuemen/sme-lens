@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, postCredit } from '../api/client'
 import { CREDIT_CONTROL_SNAPSHOT, CREDIT_SNAPSHOT, GROUP_SNAPSHOT } from '../api/snapshot'
 import type { AttentionLabel, CreditOpinion } from '../api/types'
@@ -63,10 +63,15 @@ export default function Credit() {
   const [offline, setOffline] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 供 aria-live 區域播報非視覺回饋：查詢中／結果就緒／失敗，按鈕文字改變本身
+  // 螢幕報讀器聽不到。
+  const [announcement, setAnnouncement] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
 
   async function run() {
     setLoading(true)
     setError(null)
+    setAnnouncement('查詢中，正在產生授信意見書…')
     try {
       setResult(
         await postCredit(
@@ -76,6 +81,7 @@ export default function Credit() {
         ),
       )
       setOffline(false)
+      setAnnouncement('授信意見書已產生。')
     } catch (err) {
       // 完全無法連線（斷網/DNS/CORS）或後端本身出錯（5xx，含 Vercel 冷啟動逾時）時
       // 退回內建快照，讓現場演示不中斷；畫面會明確標示為離線快照。
@@ -85,16 +91,27 @@ export default function Credit() {
       if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
         setResult(target === '泰昇精密' ? CREDIT_SNAPSHOT : CREDIT_CONTROL_SNAPSHOT)
         setOffline(true)
+        setAnnouncement('無法連線即時服務，已改用內建備援資料顯示授信意見書。')
       } else {
         // 清掉上一次的結果，避免畫面同時顯示錯誤條與舊的（且可能是別家公司的）決策卡。
         setResult(null)
         setOffline(false)
-        setError(err instanceof ApiError ? err.detail : '產生授信意見書失敗，請稍後再試。')
+        const detail = err instanceof ApiError ? err.detail : '產生授信意見書失敗，請稍後再試。'
+        setError(detail)
+        setAnnouncement(`查詢失敗：${detail}`)
       }
     } finally {
       setLoading(false)
     }
   }
+
+  // FIX 5：查詢結果出現後，把焦點移到結果區第一個標題（「建議」），螢幕報讀器
+  // 使用者按下查詢按鈕後不必自己往下找，報告從那裡開始就能被讀到。
+  useEffect(() => {
+    if (!result) return
+    const heading = rootRef.current?.querySelector<HTMLElement>('h2')
+    heading?.focus()
+  }, [result])
 
   const handleSelect = useCallback((nodeId: string) => {
     // 目前僅供未來擴充（例如點選節點展開個別敘事）；先保留 hook 以符合 GraphView 合約。
@@ -102,7 +119,11 @@ export default function Credit() {
   }, [])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" ref={rootRef}>
+      <div role="status" aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+
       <div>
         <h1 className="text-2xl font-semibold">授信意見書</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
@@ -156,8 +177,27 @@ export default function Credit() {
         <ErrorNotice message="目前顯示的是內建離線快照（案例固定為泰昇精密），非即時查詢結果——已標示為離線快照。" />
       )}
 
+      {result?.graph.meta.truncated && (
+        <ErrorNotice
+          message={`本次企業關係圖節點數過多，僅保留風險分數最高的 ${result.graph.meta.node_count} 個節點（原始共 ${result.graph.meta.total_node_count} 個）。下方的結構證據、命中圖樣與敘事皆基於這張截斷後的圖計算，可能未涵蓋企業關係圖的全部關聯，請一併參考人工覆核。`}
+        />
+      )}
+
+      {result?.graph.meta.degraded && (
+        <ErrorNotice message="本次企業關係圖來源已降級（即時圖形資料無法完整取得，改用替代資料計算），下方的結構分析與建議僅供參考，並非基於完整即時資料，請提高覆核比重。" />
+      )}
+
       {result && (
         <>
+          <Panel title="建議">
+            <p
+              className="rounded border-l-4 pl-4 text-3xl font-semibold leading-relaxed text-ink"
+              style={{ borderColor: ATTENTION_COLOR[result.label] }}
+            >
+              {result.recommendation_zh}
+            </p>
+          </Panel>
+
           <Panel title="授信關注等級">
             <div className="grid grid-cols-2 gap-6 md:grid-cols-3">
               <div>
@@ -180,7 +220,14 @@ export default function Credit() {
               </div>
               <div>
                 <div className="text-xs text-muted">網絡信用分</div>
-                <div className="tabular mt-1 text-xl">{result.network_credit.toFixed(4)}</div>
+                {result.network_credit === null ? (
+                  <div className="mt-1 text-sm leading-relaxed text-muted">
+                    未評估——本公司在此關係圖中無被觀察到的收入（入度為 0，僅見付款、
+                    未見收款），沒有「買方結構」可供評估，故不給分數，非評估結果為零。
+                  </div>
+                ) : (
+                  <div className="tabular mt-1 text-xl">{result.network_credit.toFixed(4)}</div>
+                )}
               </div>
             </div>
           </Panel>
@@ -198,15 +245,6 @@ export default function Credit() {
               </p>
             </Panel>
           )}
-
-          <Panel title="建議">
-            <p
-              className="rounded border-l-4 pl-4 text-3xl font-semibold leading-relaxed text-ink"
-              style={{ borderColor: ATTENTION_COLOR[result.label] }}
-            >
-              {result.recommendation_zh}
-            </p>
-          </Panel>
 
           <Panel title="敘事">
             <p className="text-sm leading-relaxed text-muted">{result.narrative_zh}</p>

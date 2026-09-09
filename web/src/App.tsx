@@ -1,12 +1,17 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { warmUp } from './api/client'
-import Credit from './pages/Credit'
-import Group from './pages/Group'
 import Landing from './pages/Landing'
-import Research from './pages/Research'
-import Screening from './pages/Screening'
-import Workbench from './pages/Workbench'
+
+// FIX 4：Landing 保持 eager import（是首次進站的第一個畫面，不該等 chunk 下載）。
+// 其餘五頁改成路由層級 code splitting——Cytoscape/dagre 會跟著各頁一起被拆開，
+// 使用者只下載真正瀏覽到的那一頁，不必在載入首頁時就把六頁全部（含圖形函式庫）
+// 一次抓完。
+const Credit = lazy(() => import('./pages/Credit'))
+const Group = lazy(() => import('./pages/Group'))
+const Research = lazy(() => import('./pages/Research'))
+const Screening = lazy(() => import('./pages/Screening'))
+const Workbench = lazy(() => import('./pages/Workbench'))
 
 const NAV = [
   { to: '/', label: '首頁' },
@@ -60,14 +65,16 @@ export default function App() {
       </header>
 
       <main id="main" className="mx-auto max-w-6xl px-6 py-8">
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/screening" element={<Screening />} />
-          <Route path="/credit" element={<Credit />} />
-          <Route path="/group" element={<Group />} />
-          <Route path="/workbench" element={<Workbench />} />
-          <Route path="/research" element={<Research />} />
-        </Routes>
+        <Suspense fallback={<p className="text-sm text-muted">頁面載入中…</p>}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/screening" element={<Screening />} />
+            <Route path="/credit" element={<Credit />} />
+            <Route path="/group" element={<Group />} />
+            <Route path="/workbench" element={<Workbench />} />
+            <Route path="/research" element={<Research />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <footer className="border-t border-line px-6 py-6 text-center text-sm text-muted">
