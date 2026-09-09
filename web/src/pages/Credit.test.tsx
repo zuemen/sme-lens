@@ -62,15 +62,18 @@ describe('授信意見書頁', () => {
     expect(within(targetRow).getByText(targetNode.score.toFixed(2))).toBeDefined()
   })
 
-  it('完全無法連線（status 0）或後端 5xx（例如 Vercel 冷啟動逾時的 504）時退回離線快照', async () => {
+  it('完全無法連線（status 0）時退回離線快照', async () => {
     mockedPostCredit.mockRejectedValue(new ApiError(0, '無法連線到分析服務，請確認網路後重試。'))
     render(<Credit />)
     screen.getByRole('button', { name: '產生授信意見書' }).click()
 
     await waitFor(() => expect(screen.getByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeDefined())
     expect(screen.getByText(/離線快照/)).toBeDefined()
+  })
 
+  it('後端 5xx（例如 Vercel 冷啟動逾時的 504）也要退回離線快照', async () => {
     mockedPostCredit.mockRejectedValue(new ApiError(504, '分析服務回應異常（HTTP 504）。'))
+    render(<Credit />)
     screen.getByRole('button', { name: '產生授信意見書' }).click()
 
     await waitFor(() => expect(screen.getByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeDefined())
