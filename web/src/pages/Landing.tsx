@@ -3,32 +3,27 @@ import { Link } from 'react-router-dom'
 import { checkHealth } from '../api/client'
 import { Panel } from '../components/Panel'
 
-const METRICS = [
-  { value: '0.806', label: '最佳模型 F1', note: 'Random Forest，illicit 類別' },
-  { value: '0.795', label: 'PR-AUC', note: '遵守官方時間切分，無資料洩漏' },
-  { value: '203k', label: 'Elliptic 節點數', note: '公開比特幣交易圖基準' },
-  { value: '4', label: '洗錢圖樣規則', note: '扇入／分散／集散／剝洋蔥' },
-]
-
-const FLOW = [
-  { stage: '資料層', detail: 'Elliptic 203k 節點 BTC 交易圖／TronGrid TRC-20 USDT 2-hop 圖' },
-  { stage: '分析層', detail: 'SNA 指標、Louvain 社群偵測、詐騙圖樣規則' },
-  { stage: '模型層', detail: 'GCN／GraphSAGE（PyTorch Geometric）、Random Forest 基線' },
-  { stage: '解釋層', detail: '風險證據產生器、出金審查引擎、STR 草稿' },
-]
-
 const PILLARS = [
   {
-    title: '結構證據，不是黑箱分數',
-    body: '每個風險判定都附中心性百分位、社群風險佔比與命中的資金圖樣，法遵人員看得懂、稽核追得到。',
+    stage: '貸前',
+    title: '集團歸戶',
+    body: '客戶申報的關係企業表漏掉共用董監事，集團曝險被拆散在看似無關的借款人身上——關係圖把它們併回同一個集團。',
+    to: '/group',
+    cta: '看集團歸戶 Demo',
   },
   {
-    title: '不依賴黑名單',
-    body: '從未被通報的地址，仍可經由上游關聯追溯攔下——集資扇入、快速分散、剝洋蔥鏈由圖樣庫主動掃出。',
+    stage: '貸中',
+    title: '無財報授信',
+    body: '以交易網絡結構作為信用證據，讓沒有漂亮財報的好公司被看見，而不是只憑財報數字放行或拒絕。',
+    to: '/credit',
+    cta: '看授信意見書 Demo',
   },
   {
-    title: '人在迴路中',
-    body: '高風險的處置是「暫緩並啟動人工審查」而非直接拒絕，並自動產出 STR 草稿作為人工審查的起點。',
+    stage: '貸後',
+    title: '早期預警',
+    body: '上下游一家出事，圖上的鄰居就該亮燈——用同一張關係圖持續監控授信戶的關聯風險，而不是等到逾期才發現。',
+    to: '/credit',
+    cta: '看授信意見書 Demo',
   },
 ]
 
@@ -65,72 +60,49 @@ export default function Landing() {
       <section className="py-8">
         <ServiceStatus />
         <h1 className="mt-4 text-4xl font-semibold leading-tight">
-          鏈鏡 <span className="text-muted">ChainLens</span>
+          企鏡 <span className="text-muted">SME Lens</span>
         </h1>
-        <p className="mt-3 text-xl text-muted">基於社會網路分析之虛擬資產詐騙金流偵測平台</p>
+        <p className="mt-3 text-xl text-muted">銀行不缺分數，缺的是看得見的理由</p>
         <p className="mt-5 max-w-2xl leading-relaxed text-muted">
-          以社會網路分析（SNA）與圖神經網路（GNN）偵測虛擬資產詐騙金流，
-          服務對象為 VASP 業者的法遵篩查。核心賣點是可解釋性。
+          以企業關係圖與交易網絡結構作為信用證據，讓授信人員在核貸前看見財報看不到的
+          集團曝險、在核貸中看見沒有漂亮財報也值得信任的好公司、在核貸後及早看見上下游風險的擴散。
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
-          <Link to="/screening" className="rounded bg-ink px-5 py-2 font-semibold text-base">
-            看 50 萬 USDT 攔阻 Demo
+          <Link to="/credit" className="rounded bg-ink px-5 py-2 font-semibold text-base">
+            看授信意見書 Demo
           </Link>
-          <Link to="/workbench" className="rounded border border-line px-5 py-2">
-            自己試查一個地址
+          <Link to="/group" className="rounded border border-line px-5 py-2">
+            看集團歸戶 Demo
           </Link>
         </div>
       </section>
 
       <section>
-        <h2 className="mb-4 text-sm text-muted">關鍵指標</h2>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {METRICS.map((metric) => (
-            <Panel key={metric.label}>
-              <div className="tabular text-3xl font-semibold">{metric.value}</div>
-              <div className="mt-1 text-sm">{metric.label}</div>
-              <div className="mt-1 text-xs text-muted">{metric.note}</div>
+        <h2 className="mb-4 text-sm text-muted">三個核心應用</h2>
+        <div className="grid gap-5 lg:grid-cols-3">
+          {PILLARS.map((pillar) => (
+            <Panel key={pillar.title} title={`${pillar.stage}．${pillar.title}`}>
+              <p className="text-sm leading-relaxed text-muted">{pillar.body}</p>
+              <Link to={pillar.to} className="mt-4 inline-block text-sm font-semibold text-ink">
+                {pillar.cta} →
+              </Link>
             </Panel>
           ))}
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-4 text-sm text-muted">運作方式</h2>
-        <div className="grid gap-5 lg:grid-cols-2">
-          <Panel title="四層架構">
-            <ol className="space-y-3">
-              {FLOW.map((step, index) => (
-                <li key={step.stage} className="flex gap-4">
-                  <span className="tabular w-6 shrink-0 text-muted">{index + 1}</span>
-                  <div>
-                    <div className="font-semibold">{step.stage}</div>
-                    <div className="text-sm text-muted">{step.detail}</div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </Panel>
-          <div className="space-y-5">
-            {PILLARS.map((pillar) => (
-              <Panel key={pillar.title} title={pillar.title}>
-                <p className="text-sm leading-relaxed text-muted">{pillar.body}</p>
-              </Panel>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-line bg-panel p-8 text-center">
-        <h2 className="text-xl font-semibold">看它攔下一筆黑名單攔不住的出金</h2>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted">
-          目標地址從未被通報、自身結構分數只有 0.33。真正攔下它的是上游二階的資金關聯。
+      <section className="rounded-lg border border-line bg-panel p-8">
+        <h2 className="text-xl font-semibold">同一套圖引擎，也能看見詐騙金流</h2>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+          企金授信與虛擬資產防詐看的是同一種問題——資金與關係怎麼在網絡裡流動。
+          這套企業關係圖引擎同時支援出金審查：偵測從未被通報、僅憑自身分數看不出異常的
+          可疑地址，攔下黑名單攔不住的出金。
         </p>
         <Link
           to="/screening"
-          className="mt-6 inline-block rounded bg-ink px-6 py-2.5 font-semibold text-base"
+          className="mt-6 inline-block rounded border border-line px-5 py-2 text-sm font-semibold"
         >
-          執行出金審查 Demo
+          看出金審查 Demo
         </Link>
       </section>
     </div>

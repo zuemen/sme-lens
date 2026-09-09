@@ -10,6 +10,8 @@ import Workbench from './pages/Workbench'
 
 const NAV = [
   { to: '/', label: '首頁' },
+  { to: '/credit', label: '授信意見書' },
+  { to: '/group', label: '集團歸戶' },
   { to: '/screening', label: '出金審查' },
   { to: '/workbench', label: '金流圖譜' },
   { to: '/research', label: '研究成果' },
@@ -31,7 +33,7 @@ export default function App() {
       <header className="border-b border-line">
         <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-6 px-6 py-4">
           <span className="font-semibold">
-            鏈鏡 <span className="text-muted">ChainLens</span>
+            企鏡 <span className="text-muted">SME Lens</span>
           </span>
           <div className="flex gap-5 text-sm">
             {NAV.map((item) => (
@@ -49,7 +51,7 @@ export default function App() {
             ))}
           </div>
           <NavLink
-            to="/screening"
+            to="/credit"
             className="ml-auto rounded bg-ink px-4 py-1.5 text-sm font-semibold text-base"
           >
             看 Demo
