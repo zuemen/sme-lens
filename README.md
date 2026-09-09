@@ -32,6 +32,42 @@ python -m venv .venv
 
 OpenAPI 文件：<http://localhost:8000/docs>
 
+## API
+
+### `POST /credit` — 授信意見書
+
+```bash
+curl -X POST http://localhost:8000/credit \
+  -H "Content-Type: application/json" \
+  -d '{"target": "泰昇精密"}'
+```
+
+回傳網絡信用分、授信關注分數、命中的企金風險圖樣、中文授信敘事、建議事項
+與可直接繪製的關係圖譜。
+
+### `POST /group` — 集團歸戶
+
+```bash
+curl -X POST http://localhost:8000/group \
+  -H "Content-Type: application/json" \
+  -d '{
+    "affiliations": [
+      {"company": "泰昇精密", "person": "陳大明", "role": "董事長"},
+      {"company": "泰昇投資", "person": "陳大明", "role": "董事"}
+    ],
+    "declared_groups": {"泰昇精密": "泰昇集團"},
+    "exposures": {"泰昇精密": 30000000}
+  }'
+```
+
+回傳歸戶結果、各集團授信曝險合計，以及「關係圖上存在、但客戶未申報」的
+隱性關聯清單。
+
+### 既有端點（防詐分支）
+
+`POST /score`、`POST /screen`、`POST /graph` 沿用 ChainLens 的詐騙金流分析
+能力，服務科技防詐情境。
+
 ## 淵源與授權
 
 核心圖引擎（SNA 指標、Louvain 社群偵測、GNN 模型、圖譜序列化）衍生自同作者的

@@ -295,6 +295,23 @@ def test_detect_cycle_trade_respects_max_len():
 
     assert detect_cycle_trade(g, max_len=3) == []
     assert len(detect_cycle_trade(g, max_len=4)) == 1
+
+
+def test_detect_cycle_trade_keeps_opposite_direction_cycles_separate():
+    """同一組公司間方向相反的兩條資金環是兩筆獨立事證，不得併為一筆。
+
+    以節點集合去重會把 A→B→C→A 與 A→C→B→A 併成一筆而漏報一條循環金流；
+    同時本測試釘住 nodes 保留實際流向順序（非字典序）。
+    """
+    g = nx.DiGraph()
+    for u, v in [("A", "B"), ("B", "C"), ("C", "A"), ("A", "C"), ("C", "B"), ("B", "A")]:
+        g.add_edge(u, v, amount=1_000_000.0)
+
+    three_node = [h for h in detect_cycle_trade(g, max_len=3, min_amount=100_000.0)
+                  if len(h.nodes) == 3]
+
+    assert len(three_node) == 2
+    assert {tuple(h.nodes) for h in three_node} == {("A", "B", "C"), ("A", "C", "B")}
 ```
 
 - [ ] **Step 2: 跑測試確認失敗**
@@ -337,10 +354,17 @@ def detect_cycle_trade(
     營收，或關係人之間資金迴流以粉飾財報周轉率。
 
     環上**最小**金額須 >= min_amount 才計入，避免零星小額往來構成的環誤報。
-    center 取環上字典序最小的節點，確保同一個環只回報一次且結果穩定。
+
+    `nodes` 保留環的**實際流向順序**（旋轉至 center 起始以確保結果穩定），
+    因為授信意見書與圖譜著色要能重建「錢是照哪條路繞回來的」——那條路徑
+    本身就是證據，排序後會消失。
+
+    此處**不自行去重**：`nx.simple_cycles` 已保證每個環只回傳一次（實測單向
+    三角環回傳 1 次），而以節點集合去重會把 A→B→C→A 與 A→C→B→A 這兩條方向
+    相反、彼此獨立的資金環誤併為一筆——對一個專門用來抓循環開票的圖樣而言，
+    那是漏報。
     """
     hits: list[MotifHit] = []
-    seen: set[tuple[str, ...]] = set()
     for cycle in nx.simple_cycles(g, length_bound=max_len):
         if len(cycle) < 2:  # 自環非交易環
             continue
@@ -350,19 +374,18 @@ def detect_cycle_trade(
         ]
         if min(amounts) < min_amount:
             continue
-        key = tuple(sorted(str(n) for n in cycle))
-        if key in seen:
-            continue
-        seen.add(key)
         center = min(cycle, key=str)
+        start = cycle.index(center)
+        ordered = cycle[start:] + cycle[:start]  # 旋轉至 center 起始，流向不變
+        path_zh = " → ".join(str(n) for n in [*ordered, center])
         hits.append(
             MotifHit(
                 motif="cycle_trade",
                 center=center,
-                nodes=sorted(cycle, key=str),
+                nodes=ordered,
                 description_zh=(
                     f"節點 {center} 位於長度 {len(cycle)} 的封閉資金環"
-                    f"（環上最小金額 {min(amounts):,.0f}），"
+                    f"（{path_zh}，環上最小金額 {min(amounts):,.0f}），"
                     "符合循環交易／資金迴流圖樣。"
                 ),
             )
@@ -376,7 +399,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_sme_motifs.py -q
 ```
-Expected: `3 passed`
+Expected: `4 passed`
 
 - [ ] **Step 5: Commit**
 
@@ -431,6 +454,10 @@ def test_detect_shell_intermediary_flags_passthrough_node():
     assert [h.center for h in hits] == ["宏益企業"]
     assert hits[0].motif == "shell_intermediary"
     assert "過水比" in hits[0].description_zh
+    # nodes 的內容要釘死：只放中介本身（漏掉對手方）或只放對手方（漏掉中介）
+    # 都會讓下游證據少一半，而僅檢查 center 的斷言抓不到這兩種錯。
+    assert hits[0].nodes[0] == "宏益企業", "nodes 首位必須是中介節點本身"
+    assert set(hits[0].nodes[1:]) == {"買方甲", "供應商乙"}, "nodes 須含上下游對手方"
 
 
 def test_detect_shell_intermediary_ignores_many_counterparties():
@@ -511,7 +538,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_sme_motifs.py -q
 ```
-Expected: `6 passed`
+Expected: `7 passed`
 
 - [ ] **Step 5: Commit**
 
@@ -599,7 +626,7 @@ def test_detect_all_sme_combines_three_motifs():
     assert "buyer_concentration" in motifs
 ```
 
-備註：最後一個測試中，`去向` 的收入 2,970,000 全部來自 `空殼`（100% 集中），故 `buyer_concentration` 必然命中。
+備註：最後一個測試中，`去向` 的收入 2,970,000 全部來自 `空殼`（100% 集中），故 `buyer_concentration` 必然命中。事實上 `環甲`、`環乙`、`空殼` 也各自 100% 單一買方而同樣命中——本測試只斷言 motif **種類集合**，不斷言命中筆數，故不受影響。一個節點同時命中兩個圖樣是正確的疊加事證，不是重複計算。
 
 - [ ] **Step 2: 跑測試確認失敗**
 
@@ -668,7 +695,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_sme_motifs.py -q
 ```
-Expected: `9 passed`
+Expected: `10 passed`
 
 - [ ] **Step 5: 跑完整套件與 lint**
 
@@ -677,7 +704,7 @@ Run:
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest -q 2>&1 | tail -3
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m ruff check . --exclude .venv
 ```
-Expected: `98 passed`；`All checks passed!`
+Expected: `99 passed`；`All checks passed!`
 
 - [ ] **Step 6: Commit**
 
@@ -978,6 +1005,29 @@ def test_build_company_graph_links_companies_sharing_a_person():
     assert "禾昌五金" in g  # 無共用者仍須入圖，否則歸戶會漏掉單獨公司
 
 
+def test_build_company_graph_accumulates_multiple_shared_persons():
+    """兩家公司共用多名自然人時，weight 要累加、shared 要收齊並排序。
+
+    只共用一人的案例檢不出「以 shared = [person] 覆寫而非 append」或
+    「weight 未累加」——這兩種錯在 weight==1 時看起來完全正常。
+    """
+    affiliations = [
+        Affiliation("甲公司", "王五", "董事"),
+        Affiliation("乙公司", "王五", "監察人"),
+        Affiliation("甲公司", "李四", "監察人"),
+        Affiliation("乙公司", "李四", "董事"),
+        Affiliation("甲公司", "張三", "董事長"),
+        Affiliation("乙公司", "張三", "董事"),
+    ]
+
+    g = build_company_graph(affiliations)
+
+    assert g["甲公司"]["乙公司"]["weight"] == 3
+    # 刻意讓插入順序（王五→李四→張三）與排序後順序（張三→李四→王五）相反，
+    # 否則漏掉最後那圈 shared.sort() 也看不出來。
+    assert g["甲公司"]["乙公司"]["shared"] == ["張三", "李四", "王五"]
+
+
 def test_detect_groups_is_transitive():
     """A-B 共用、B-C 共用，則 A、B、C 同屬一個歸戶群組。"""
     g = build_company_graph(_AFFILIATIONS)
@@ -1169,7 +1219,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_group.py -q
 ```
-Expected: `5 passed`
+Expected: `6 passed`
 
 - [ ] **Step 5: Commit**
 
@@ -1305,6 +1355,75 @@ def test_credit_opinion_normal_company_is_not_watch():
     assert opinion["motif_hits"] == []
 
 
+def test_credit_opinion_label_thresholds_are_pinned():
+    """三級分界與結構證據欄位都要釘死：把 0.7／0.4 對調也必須有測試會紅。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    watch = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+    normal = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert watch["label"] == "watch"
+    assert watch["label_zh"] == "關注"
+    assert watch["attention_score"] >= 0.7
+    assert normal["label"] == "normal"
+    assert normal["label_zh"] == "正常"
+    assert normal["attention_score"] < 0.4
+    # 結構證據欄位是「可解釋」主張的實體，不得為空或殘缺
+    assert set(watch["centrality_percentile"]) == {
+        "in_degree",
+        "out_degree",
+        "pagerank",
+        "kcore",
+        "betweenness",
+    }
+    assert all(0.0 <= v <= 100.0 for v in watch["centrality_percentile"].values())
+    assert isinstance(watch["community_risk_ratio"], float)
+    assert {hit["motif"] for hit in watch["motif_hits"]} == {
+        "cycle_trade",
+        "buyer_concentration",
+    }
+
+
+def test_credit_opinion_caution_band_is_reachable_and_pinned():
+    """留意級（0.4 ≤ 分數 < 0.7）必須被真的走到，否則門檻對調不會被抓到。
+
+    兩家劇本公司的規則分數是 0.83 與 0.09，都落在模糊帶之外——把 0.7 與 0.4
+    對調，它們的 label 一個字都不會變，測試等於沒牙。改以 model_score 把分數
+    推進中間帶：此時門檻一對調，caution 就會變成 watch，測試才真的擋得住。
+    這同時也是 model_score 混合路徑（0.5×模型 + 0.5×規則）唯一的測試。
+    """
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    opinion = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits, model_score=0.8
+    )
+
+    assert opinion["label"] == "caution"
+    assert opinion["label_zh"] == "留意"
+    assert 0.4 <= opinion["attention_score"] < 0.7
+    assert "GNN 模型判定違約機率 0.80" in opinion["narrative_zh"]
+
+
+def test_credit_opinion_narrative_speaks_about_the_applicant():
+    """敘事必須以本次授信對象為主詞，且不得出現「。；」的串接瑕疵。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    narrative = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )["narrative_zh"]
+
+    assert "。；" not in narrative
+    # 環上證據要從本公司講起，不是從環上字典序最小的另一家公司講起
+    assert "本公司位於長度 4 的封閉資金環（泰昇精密 →" in narrative
+
+
 def test_credit_opinion_carries_group_context():
     """帶入集團資訊時應原樣附在意見書上，供行員覆核集團曝險。"""
     g = load_supply_chain_scenario()
@@ -1361,6 +1480,28 @@ from smelens.sna.metrics import compute_sna_features
 from smelens.sna.sme_motifs import detect_all_sme
 
 _LABEL_ZH = {"watch": "關注", "caution": "留意", "normal": "正常"}
+
+def _motif_sentence(node: Any, hit: Any) -> str:
+    """把圖樣命中改寫成以「本次授信對象」為主詞的句子（結尾不帶句號）。
+
+    圖樣的 `center` 是全圖層級的代表節點——以循環交易為例，取的是環上字典序
+    最小者。但授信意見書是寫給「這一家公司」看的：一份談 A 公司的文件，證據
+    段卻以 B 公司開頭，讀的人第一秒就會卡住，而可讀性正是本模組存在的理由。
+
+    故當本公司只是環上成員而非 center 時，改以本公司為起點重述整條路徑。
+    其餘圖樣的 center 本來就是被指認的那家公司，沿用原敘事即可。
+    """
+    text = hit.description_zh.rstrip("。")
+    if hit.motif != "cycle_trade" or hit.center == node or node not in hit.nodes:
+        return text
+    start = hit.nodes.index(node)
+    ordered = hit.nodes[start:] + hit.nodes[:start]
+    path_zh = " → ".join(str(n) for n in [*ordered, node])
+    return (
+        f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}），"
+        "符合循環交易／資金迴流圖樣"
+    )
+
 
 _RECOMMENDATION_ZH = {
     "watch": "建議暫緩核貸，先行實地查核關係人交易與主要買方合約之真實性。",
@@ -1473,7 +1614,9 @@ def generate_credit_opinion(
         f"（{_LABEL_ZH[label]}）。"
     ]
     if relevant:
-        narrative.append("命中企金風險圖樣：" + "；".join(h.description_zh for h in relevant))
+        # 逐句去掉自帶的句號再以分號串接，最後統一補一個句號——直接串會產生「。；」。
+        sentences = "；".join(_motif_sentence(node, hit) for hit in relevant)
+        narrative.append(f"命中企金風險圖樣：{sentences}。")
     else:
         narrative.append("未命中任何企金風險圖樣。")
     narrative.append(
@@ -1513,7 +1656,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_credit_opinion.py -q
 ```
-Expected: `8 passed`
+Expected: `11 passed`
 
 - [ ] **Step 5: 跑完整套件與 lint**
 
@@ -1522,7 +1665,7 @@ Run:
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest -q 2>&1 | tail -3
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m ruff check . --exclude .venv
 ```
-Expected: `116 passed`；`All checks passed!`
+Expected: `121 passed`；`All checks passed!`
 
 - [ ] **Step 6: Commit**
 
@@ -1554,7 +1697,7 @@ EOF
 - Produces:
   - `graph_to_json(..., role_zh: Mapping[str, str] | None = None)` — 新增選配參數，`None` 時沿用既有 AML 劇本對照表
   - `POST /credit`，請求 `{"target": str, "group_id": int | null, "group_exposure_twd": float | null}`；回應為 `generate_credit_opinion` 的輸出，另加 `"graph"`（`graph_to_json` 產物）
-  - `POST /group`，請求 `{"affiliations": [{"company": str, "person": str, "role": str}], "declared_groups": {...}, "exposures": {...}}`；回應 `{"groups": {公司: 集團編號}, "exposures": {集團編號字串: 金額}, "hidden_links": [...]}`
+  - `POST /group`（回應含 `unattributed`：有曝險但不在名冊中的公司），請求 `{"affiliations": [{"company": str, "person": str, "role": str}], "declared_groups": {...}, "exposures": {...}}`；回應 `{"groups": {公司: 集團編號}, "exposures": {集團編號字串: 金額}, "hidden_links": [...]}`
 
 **已知陷阱（本 Task 必須處理，否則會靜默劣化）：**
 `graph_to_json` 以 `evidence.get("score", 0.0)` 與 `evidence.get("label", "low")` 讀取著色欄位，而授信意見書的對應鍵是 `attention_score` 與 `label`（值域為 `watch`／`caution`／`normal`）。因為有預設值，**不會拋錯**，只會把整張圖染成 0 分——這比報錯更糟。同理，`serialize.py` 的 `ROLE_ZH` 硬綁 AML 劇本，企金角色（`applicant`、`anchor_buyer`…）會回退成英文鍵。兩者都必須明確處理。
@@ -1655,6 +1798,24 @@ def test_group_endpoint_returns_groups_and_hidden_links():
     assert body["hidden_links"][0]["shared_persons"] == ["王秀英"]
 
 
+def test_group_endpoint_reports_unattributed_exposure():
+    """名冊上沒有的公司，其曝險不得靜默消失——必須列名回報。"""
+    response = client.post(
+        "/group",
+        json={
+            "affiliations": [
+                {"company": "泰昇精密", "person": "陳大明", "role": "董事長"},
+                {"company": "泰昇投資", "person": "陳大明", "role": "董事"},
+            ],
+            "exposures": {"泰昇精密": 30_000_000, "查無此公司": 8_000_000},
+        },
+    )
+
+    body = response.json()
+    assert body["unattributed"] == ["查無此公司"]
+    assert sum(body["exposures"].values()) == 30_000_000
+
+
 def test_group_endpoint_rejects_empty_affiliations():
     """空名冊無從歸戶，應回 400。"""
     response = client.post("/group", json={"affiliations": []})
@@ -1669,6 +1830,32 @@ Run:
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_api_credit.py -q
 ```
 Expected: FAIL，`/credit` 回應 404（路由不存在）
+
+- [ ] **Step 2.5: 更新 `main.py` 的模組 docstring（Task 1 遺留）**
+
+Task 1 只換掉了 FastAPI 建構子的品牌字串，模組頂端的 docstring 仍寫著「ChainLens FastAPI 服務」且只描述防詐端點。本任務既然要改這個檔案，一併收乾淨。把 `smelens/api/main.py` 檔首的 docstring 整段換成：
+
+```python
+"""SME Lens FastAPI 服務。
+
+企金授信分支：
+    POST /credit：輸入企業名稱，回傳授信意見書（網絡信用分、關注分數、
+                  結構證據、中文敘事、建議與關係圖譜）。
+    POST /group ：輸入公司—自然人名冊，回傳集團歸戶、各集團曝險，
+                  以及客戶未申報的隱性關聯。
+
+科技防詐分支（沿用自 ChainLens）：
+    POST /score 、/screen、/graph：虛擬資產詐騙金流風險評分與出金審查。
+
+curl 範例：
+    curl -X POST http://localhost:8000/credit \\
+      -H "Content-Type: application/json" \\
+      -d '{"target": "泰昇精密"}'
+
+啟動：./.venv/Scripts/python.exe -m uvicorn smelens.api.main:app --port 8000
+OpenAPI 文件：http://localhost:8000/docs
+"""
+```
 
 - [ ] **Step 3: 讓 `graph_to_json` 支援企金角色對照表**
 
@@ -1811,10 +1998,14 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
     )
     groups = detect_groups(company_graph)
     totals = group_exposure(groups, req.exposures)
+    # group_exposure 會靜默略過不在名冊中的公司。對銀行而言那是「曝險憑空消失」，
+    # 是本系統最不該有的行為——改為明確列名回報，讓授信人員自己判斷該補名冊還是視為單獨歸戶。
+    unattributed = sorted(c for c in req.exposures if c not in groups)
     return {
         "groups": groups,
         "exposures": {str(gid): amount for gid, amount in totals.items()},
         "hidden_links": hidden_links(company_graph, req.declared_groups),
+        "unattributed": unattributed,
     }
 ```
 
@@ -1824,7 +2015,7 @@ Run:
 ```bash
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest tests/test_api_credit.py -q
 ```
-Expected: `7 passed`
+Expected: `8 passed`
 
 - [ ] **Step 6: 跑完整套件，確認 serialize.py 的改動未影響防詐分支**
 
@@ -1833,7 +2024,7 @@ Run:
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest -q 2>&1 | tail -3
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m ruff check . --exclude .venv
 ```
-Expected: `123 passed`；`All checks passed!`
+Expected: `129 passed`；`All checks passed!`
 （`role_zh` 預設為 `None` 時沿用原本的 `ROLE_ZH`，既有 `/screen`、`/graph` 的測試不得有任何改變。）
 
 - [ ] **Step 7: 手動驗證端點可用**
@@ -1877,12 +2068,70 @@ EOF
 ### Task 9: CI 綠燈與文件收尾
 
 **Files:**
+- Create: `.gitattributes`
 - Modify: `.github/workflows/`（既有 workflow 檔）、`README.md`、`Makefile`
 - Test: 完整套件
 
 **Interfaces:**
 - Consumes: Task 1–8 全部
-- Produces: GitHub Actions 綠燈；README 含 API 使用範例
+- Produces: GitHub Actions 綠燈；README 含 API 使用範例；全 repo 統一 LF 換行
+
+- [ ] **Step 0: 統一換行符**
+
+Task 1 的批次改名以 `sed -i` 改寫了 7 個 `.py` 檔，副作用是把它們從 CRLF 轉成 LF，而 repo 其餘檔案仍是 CRLF。現在混合並存，之後每次編輯都會產生整檔 diff 的雜訊。趁新檔案還少，一次正規化。
+
+建立 `.gitattributes`：
+
+```gitattributes
+# 全 repo 以 LF 儲存，避免 CRLF/LF 混雜造成整檔 diff 雜訊。
+# 背景：初始改名以 sed -i 改寫部分檔案時把 CRLF 轉成了 LF。
+* text=auto eol=lf
+
+# 二進位檔不做任何轉換
+*.pt binary
+*.joblib binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
+```
+
+同時在 `pyproject.toml` 的 `[tool.ruff]` 區段加入排除設定，讓 SDD 工作區的暫存腳本不會擋住 lint 關卡（實際發生過：一個任務留下的一次性驗算腳本讓全 repo ruff 出現 11 個錯誤）：
+
+```toml
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".superpowers", ".venv"]
+```
+
+再在 `.gitignore` 末尾追加兩行——本任務的 commit 用 `git add -A`，而 SDD 的工作區目前只有一層自我忽略的 `.gitignore`，它自己會被掃進 repo：
+
+```gitignore
+
+# SDD 工作區（任務簡報、報告、審查包、進度 ledger），非專案產物
+.superpowers/
+```
+
+套用正規化：
+
+```bash
+cd /c/Users/sanketsu/sme-lens
+git add --renormalize .
+git status --porcelain | wc -l
+git add -An | grep -c '\.superpowers' || echo "0 — SDD 工作區已排除"
+```
+
+Expected: 最後一行印出 `0 — SDD 工作區已排除`。
+
+Expected: 印出被正規化的檔案數（非 0）。
+
+跑一次測試確認正規化未影響任何行為：
+
+```bash
+cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest -q 2>&1 | tail -3
+```
+Expected: `129 passed`
 
 - [ ] **Step 1: 檢查既有 workflow 是否仍指向舊套件名**
 
@@ -1982,32 +2231,48 @@ Run:
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m pytest -q 2>&1 | tail -3
 cd /c/Users/sanketsu/sme-lens && ./.venv/Scripts/python.exe -m ruff check . --exclude .venv
 ```
-Expected: `123 passed`；`All checks passed!`
+Expected: `129 passed`；`All checks passed!`
 
 - [ ] **Step 5: Commit 並推上 GitHub**
 
 ```bash
 cd /c/Users/sanketsu/sme-lens
-git add .github README.md Makefile
+git add -A
 git commit -F - <<'EOF'
-chore: CI 改用 pip 流程、README 補 API 章節、Makefile 去 uv 依賴
+chore: CI 改用 pip 流程、README 補 API 章節、換行符正規化
 
 CI runner 未預裝 uv，改標準 pip 安裝；Makefile 統一走 .venv 直譯器，
-與本機環境一致。
+與本機環境一致。加入 .gitattributes 以 LF 統一換行——初始改名的 sed -i
+把部分檔案從 CRLF 轉成 LF，造成 repo 混合並存，趁檔案還少一次收乾淨。
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01RP9fg6Rn2Jr1Vn9v9bg1Ls
 EOF
-git push
 ```
+
+本分支尚未建立 upstream（Task 2–9 都在 `feat/sme-credit-engine` 上，只有 `main` 推過），故首次推送必須帶 `-u`：
+
+```bash
+cd /c/Users/sanketsu/sme-lens
+git push -u origin feat/sme-credit-engine
+```
+
+**不要**推 `main`，也**不要**合併——分支整併由後續的 finishing-a-development-branch 流程處理。
 
 - [ ] **Step 6: 確認 GitHub Actions 綠燈**
 
-Run:
+先確認 workflow 是否會在非 `main` 分支觸發：
+
+```bash
+cd /c/Users/sanketsu/sme-lens && grep -A4 '^on:' .github/workflows/*.yml
+```
+
+若 `push` 的 `branches` 限定了 `main`，把 `feat/**` 一併加入，讓功能分支也跑 CI（這正是 CI 該擋下問題的時機），改完 amend 進上一個 commit 並重推。
+
 ```bash
 cd /c/Users/sanketsu/sme-lens && gh run list --limit 3
 ```
-Expected: 最新一筆 status 為 `completed`、conclusion 為 `success`。若失敗，讀 `gh run view --log-failed` 修正後重推。
+Expected: 最新一筆 status 為 `completed`、conclusion 為 `success`。若失敗，讀 `gh run view --log-failed` 修正後重推。若 `gh` 未認證而無法查詢，記錄於報告並改以 `git push` 的輸出確認推送成功即可，不要卡住。
 
 ---
 

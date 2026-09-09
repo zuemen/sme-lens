@@ -1,23 +1,19 @@
-.PHONY: setup download-data train api app test lint
+.PHONY: setup test lint api app
+
+PYTHON ?= .venv/Scripts/python.exe
 
 setup:
-	uv sync
-
-## 需先設定 Kaggle API 憑證（~/.kaggle/kaggle.json）
-download-data:
-	uv run --with kaggle kaggle datasets download -d ellipticco/elliptic-data-set -p data/raw --unzip
-
-train:
-	uv run python -m smelens.models.train --model sage --use-sna
-
-api:
-	uv run uvicorn smelens.api.main:app --reload --port 8000
-
-app:
-	uv run streamlit run smelens/app/workbench.py
+	$(PYTHON) -m pip install -e .
+	$(PYTHON) -m pip install pytest ruff
 
 test:
-	uv run pytest -q
+	$(PYTHON) -m pytest -q
 
 lint:
-	uv run ruff check .
+	$(PYTHON) -m ruff check . --exclude .venv
+
+api:
+	$(PYTHON) -m uvicorn smelens.api.main:app --reload --port 8000
+
+app:
+	$(PYTHON) -m streamlit run smelens/app/workbench.py

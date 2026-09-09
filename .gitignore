@@ -16,3 +16,6 @@ checkpoints/
 
 # Secrets
 .env
+
+# SDD 工作區（任務簡報、報告、審查包、進度 ledger），非專案產物
+.superpowers/

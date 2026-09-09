@@ -1,0 +1,11 @@
+# 全 repo 以 LF 儲存，避免 CRLF/LF 混雜造成整檔 diff 雜訊。
+# 背景：初始改名以 sed -i 改寫部分檔案時把 CRLF 轉成了 LF。
+* text=auto eol=lf
+
+# 二進位檔不做任何轉換
+*.pt binary
+*.joblib binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.ico binary
