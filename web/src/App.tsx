@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import { warmUp } from './api/client'
 import Credit from './pages/Credit'
+import Group from './pages/Group'
 import Landing from './pages/Landing'
 import Research from './pages/Research'
 import Screening from './pages/Screening'
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/screening" element={<Screening />} />
           <Route path="/credit" element={<Credit />} />
+          <Route path="/group" element={<Group />} />
           <Route path="/workbench" element={<Workbench />} />
           <Route path="/research" element={<Research />} />
         </Routes>
