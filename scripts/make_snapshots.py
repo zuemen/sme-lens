@@ -1,8 +1,12 @@
 """產生前端離線快照（credit / group / screening）：現場斷網或後端冷啟動逾時時，demo 仍能演完。
 
-三份快照都由本腳本對正在跑的後端發出與前端 demo 完全相同的請求並落盤，
+四份快照都由本腳本對正在跑的後端發出與前端 demo 完全相同的請求並落盤，
 確保它們可重現、不會與後端行為漂移——這正是 screening 快照過去手工產生、
 未納入本腳本時發生過的問題（見 web/e2e/screening.spec.ts 的說明）。
+
+本腳本同時是 DEMO_AFFILIATIONS / DEMO_DECLARED / DEMO_EXPOSURES 這份示範名冊的
+唯一來源，並把它寫成 web/src/api/demo-roster.json 供 Group.tsx 匯入——
+避免這份名冊在 Python 與 TypeScript 兩邊各存一份、只靠註解「保持逐字一致」。
 
 Windows 下務必以 PYTHONIOENCODING=utf-8 執行，否則 stdout 會弄壞中文。
 `smelens` 未以 editable 方式裝進 .venv，故需一併指定 PYTHONPATH。
@@ -40,10 +44,32 @@ DEMO_EXPOSURES = {"泰昇精密": 30_000_000, "泰昇投資": 12_000_000, "昇�
 def main() -> None:
     client = TestClient(app)
 
+    (OUT_DIR / "demo-roster.json").write_text(
+        json.dumps(
+            {
+                "affiliations": DEMO_AFFILIATIONS,
+                "declared": DEMO_DECLARED,
+                "exposures": DEMO_EXPOSURES,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
     credit = client.post("/credit", json={"target": "泰昇精密"})
     credit.raise_for_status()
     (OUT_DIR / "credit-snapshot.json").write_text(
         json.dumps(credit.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    # 對照組（禾昌五金）：讓現場即使切到「我們不是逢公司必標」的那個示範案例，
+    # 斷網或冷啟動逾時時也有離線快照可用，不會只剩一行錯誤訊息。
+    credit_control = client.post("/credit", json={"target": "禾昌五金"})
+    credit_control.raise_for_status()
+    (OUT_DIR / "credit-control-snapshot.json").write_text(
+        json.dumps(credit_control.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
     group = client.post(
@@ -70,7 +96,10 @@ def main() -> None:
         json.dumps(screening.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
-    print("wrote credit-snapshot.json / group-snapshot.json / screening-snapshot.json")
+    print(
+        "wrote demo-roster.json / credit-snapshot.json / credit-control-snapshot.json / "
+        "group-snapshot.json / screening-snapshot.json"
+    )
 
 
 if __name__ == "__main__":

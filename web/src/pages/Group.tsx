@@ -1,31 +1,15 @@
 import { useState } from 'react'
 import { ApiError, postGroup } from '../api/client'
-import { GROUP_SNAPSHOT } from '../api/snapshot'
-import type { AffiliationInput, GroupResult } from '../api/types'
+import { DEMO_ROSTER, GROUP_SNAPSHOT } from '../api/snapshot'
+import type { GroupResult } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
 import { Panel } from '../components/Panel'
 
-// 與 scripts/make_snapshots.py 的 DEMO_AFFILIATIONS / DEMO_DECLARED / DEMO_EXPOSURES
-// 保持逐字一致，避免頁面預填資料與離線快照的生成來源脫鉤。
-const DEMO_AFFILIATIONS: Required<AffiliationInput>[] = [
-  { company: '泰昇精密', person: '陳大明', role: '董事長' },
-  { company: '泰昇投資', person: '陳大明', role: '董事' },
-  { company: '昇泰貿易', person: '王秀英', role: '董事' },
-  { company: '泰昇投資', person: '王秀英', role: '監察人' },
-  { company: '禾昌五金', person: '林志豪', role: '董事長' },
-]
-
-const DEMO_DECLARED: Record<string, string> = {
-  泰昇精密: '泰昇集團',
-  泰昇投資: '泰昇集團',
-  昇泰貿易: '昇泰集團',
-}
-
-const DEMO_EXPOSURES: Record<string, number> = {
-  泰昇精密: 30_000_000,
-  泰昇投資: 12_000_000,
-  昇泰貿易: 8_000_000,
-}
+// 單一來源：scripts/make_snapshots.py 產生 group-snapshot.json 用的正是這份名冊，
+// 並把它落盤成 demo-roster.json 讓這裡匯入，兩邊不會再各存一份而漂移。
+const DEMO_AFFILIATIONS = DEMO_ROSTER.affiliations
+const DEMO_DECLARED = DEMO_ROSTER.declared
+const DEMO_EXPOSURES = DEMO_ROSTER.exposures
 
 function formatTwd(amount: number): string {
   return `${amount.toLocaleString('zh-TW')} 元`
@@ -191,77 +175,79 @@ export default function Group() {
         <ErrorNotice message="目前顯示的是內建離線快照（案例固定為泰昇集團／昇泰集團名冊），非即時查詢結果——已標示為離線快照。" />
       )}
 
-      {result &&
-        actualGroupCount !== null &&
-        actualExposureForMergedGroup !== null &&
-        exposureGap !== null && (
+      {result && (
         <>
-          <Panel title="申報 vs. 實際：客戶申報的集團數與最大集團曝險，關係圖歸戶後怎麼變">
-            <div className="grid gap-6 sm:grid-cols-2">
-              <div className="rounded-lg border border-line p-4">
-                <div className="text-xs text-muted">客戶申報</div>
-                <div className="tabular mt-1 text-4xl font-semibold text-muted">
-                  <span data-testid="group-count-declared">{DECLARED_GROUP_COUNT}</span> 個集團
+          {actualGroupCount !== null &&
+            actualExposureForMergedGroup !== null &&
+            exposureGap !== null && (
+            <Panel title="申報 vs. 實際：客戶申報的集團數與最大集團曝險，關係圖歸戶後怎麼變">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="rounded-lg border border-line p-4">
+                  <div className="text-xs text-muted">客戶申報</div>
+                  <div className="tabular mt-1 text-4xl font-semibold text-muted">
+                    <span data-testid="group-count-declared">{DECLARED_GROUP_COUNT}</span> 個集團
+                  </div>
+                  <div
+                    className="tabular mt-3 text-4xl font-semibold text-muted"
+                    data-testid="group-exposure-declared"
+                  >
+                    {formatTwd(declaredLargestExposure)}
+                  </div>
+                  <div className="mt-1 text-xs text-muted">
+                    最大申報集團「{largestGroupName}」的申報曝險
+                  </div>
                 </div>
                 <div
-                  className="tabular mt-3 text-4xl font-semibold text-muted"
-                  data-testid="group-exposure-declared"
+                  className="rounded-lg border-2 p-4"
+                  style={{ borderColor: 'var(--color-risk-high)' }}
                 >
-                  {formatTwd(declaredLargestExposure)}
-                </div>
-                <div className="mt-1 text-xs text-muted">
-                  最大申報集團「{largestGroupName}」的申報曝險
+                  <div className="text-xs" style={{ color: 'var(--color-risk-high)' }}>
+                    關係圖歸戶後
+                  </div>
+                  <div
+                    className="tabular mt-1 text-4xl font-semibold"
+                    style={{ color: 'var(--color-risk-high)' }}
+                  >
+                    <span data-testid="group-count-actual">{actualGroupCount}</span> 個集團
+                  </div>
+                  <div
+                    className="tabular mt-3 text-4xl font-semibold"
+                    style={{ color: 'var(--color-risk-high)' }}
+                    data-testid="group-exposure-actual"
+                  >
+                    {formatTwd(actualExposureForMergedGroup)}
+                    <span className="ml-2 text-xl" data-testid="group-exposure-gap">
+                      （{exposureGap >= 0 ? '+' : ''}
+                      {formatTwd(exposureGap)}）
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs" style={{ color: 'var(--color-risk-high)' }}>
+                    同一集團的實際合併曝險（含被拆散在外的部分）
+                  </div>
                 </div>
               </div>
-              <div
-                className="rounded-lg border-2 p-4"
-                style={{ borderColor: 'var(--color-risk-high)' }}
-              >
-                <div className="text-xs" style={{ color: 'var(--color-risk-high)' }}>
-                  關係圖歸戶後
-                </div>
-                <div
-                  className="tabular mt-1 text-4xl font-semibold"
-                  style={{ color: 'var(--color-risk-high)' }}
-                >
-                  <span data-testid="group-count-actual">{actualGroupCount}</span> 個集團
-                </div>
-                <div
-                  className="tabular mt-3 text-4xl font-semibold"
-                  style={{ color: 'var(--color-risk-high)' }}
-                  data-testid="group-exposure-actual"
-                >
-                  {formatTwd(actualExposureForMergedGroup)}
-                  <span className="ml-2 text-xl" data-testid="group-exposure-gap">
-                    （+{formatTwd(exposureGap)}）
-                  </span>
-                </div>
-                <div className="mt-1 text-xs" style={{ color: 'var(--color-risk-high)' }}>
-                  同一集團的實際合併曝險（含被拆散在外的部分）
-                </div>
-              </div>
-            </div>
-            <p className="mt-4 text-base leading-relaxed text-muted">
-              客戶申報 {DECLARED_GROUP_COUNT} 個獨立集團，關係圖歸戶後只剩 {actualGroupCount} 個
-              ——
-              {revealingLink ? (
-                <>
-                  <span className="font-semibold text-ink">{revealingLink.company_a}</span> 與{' '}
-                  <span className="font-semibold text-ink">{revealingLink.company_b}</span>{' '}
-                  因共用自然人{' '}
-                  <span className="font-semibold text-ink">
-                    {revealingLink.shared_persons.join('、')}
-                  </span>{' '}
-                  而併為同一集團。
-                </>
-              ) : (
-                '關係圖比對出客戶未申報的共同持有／共用董監事關係。'
-              )}{' '}
-              最大申報集團「{largestGroupName}」原申報曝險為 {formatTwd(declaredLargestExposure)}，
-              併入後實際曝險為 {formatTwd(actualExposureForMergedGroup)}，
-              多出的 {formatTwd(exposureGap)} 原本以另一個獨立集團的名義申報，在名冊裡完全看不出來。
-            </p>
-          </Panel>
+              <p className="mt-4 text-base leading-relaxed text-muted">
+                客戶申報 {DECLARED_GROUP_COUNT} 個獨立集團，關係圖歸戶後只剩 {actualGroupCount} 個
+                ——
+                {revealingLink ? (
+                  <>
+                    <span className="font-semibold text-ink">{revealingLink.company_a}</span> 與{' '}
+                    <span className="font-semibold text-ink">{revealingLink.company_b}</span>{' '}
+                    因共用自然人{' '}
+                    <span className="font-semibold text-ink">
+                      {revealingLink.shared_persons.join('、')}
+                    </span>{' '}
+                    而併為同一集團。
+                  </>
+                ) : (
+                  '關係圖比對出客戶未申報的共同持有／共用董監事關係。'
+                )}{' '}
+                最大申報集團「{largestGroupName}」原申報曝險為 {formatTwd(declaredLargestExposure)}，
+                併入後實際曝險為 {formatTwd(actualExposureForMergedGroup)}，
+                多出的 {formatTwd(exposureGap)} 原本以另一個獨立集團的名義申報，在名冊裡完全看不出來。
+              </p>
+            </Panel>
+          )}
 
           <Panel title="隱性關聯（客戶未申報，關係圖比對出來的共同持有／共用董監事）">
             {result.hidden_links.length > 0 ? (

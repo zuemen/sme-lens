@@ -1,10 +1,10 @@
 import { useCallback, useState } from 'react'
 import { ApiError, postCredit } from '../api/client'
-import { CREDIT_SNAPSHOT } from '../api/snapshot'
+import { CREDIT_CONTROL_SNAPSHOT, CREDIT_SNAPSHOT, GROUP_SNAPSHOT } from '../api/snapshot'
 import type { AttentionLabel, CreditOpinion } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
 import { Panel } from '../components/Panel'
-import { RISK_LABEL_ZH, riskColor } from '../components/RiskBadge'
+import { nodeColor } from '../graph/elements'
 import { GraphView } from '../graph/GraphView'
 
 const TARGETS = [
@@ -17,6 +17,36 @@ const ATTENTION_COLOR: Record<AttentionLabel, string> = {
   caution: 'var(--color-risk-med)',
   normal: 'var(--color-risk-low)',
 }
+
+/** 圖上「high／medium／low」是後端把授信 watch／caution／normal 映射過去給著色用的，
+ * 這裡把它映回授信詞彙顯示，避免跟防詐分支的 RISK_LABEL_ZH（「高風險」）混用。
+ * 對照關係見 smelens/api 的 _GRAPH_LABEL_ZH／graph_to_json 著色邏輯。 */
+const ATTENTION_LEVEL_ZH: Record<string, string> = {
+  high: '關注',
+  medium: '留意',
+  low: '正常',
+}
+
+/** 節點表格「關注等級」欄位的顏色，鍵沿用圖上的 high／medium／low（與 ATTENTION_COLOR 同色階）。 */
+const ATTENTION_COLOR_BY_GRAPH_LABEL: Record<string, string> = {
+  high: 'var(--color-risk-high)',
+  medium: 'var(--color-risk-med)',
+  low: 'var(--color-risk-low)',
+}
+
+function formatTwd(amount: number): string {
+  return `${amount.toLocaleString('zh-TW')} 元`
+}
+
+/**
+ * 集團歸戶頁（Group.tsx）示範名冊歸戶後，泰昇集團落在的集團編號與合計曝險——
+ * 單一來源是 GROUP_SNAPSHOT（scripts/make_snapshots.py 產生），不是字面常數，
+ * 避免這裡與 /group 頁面各存一份數字而漂移。示範名冊只有一個集團編號，
+ * 取曝險最高的那個即為「帶入集團歸戶脈絡」勾選時要帶的集團。
+ */
+const [DEMO_GROUP_ID, DEMO_GROUP_EXPOSURE] = Object.entries(GROUP_SNAPSHOT.exposures).sort(
+  ([, a], [, b]) => b - a,
+)[0]
 
 const CENTRALITY_ZH: Record<string, string> = {
   in_degree: '入度百分位',
@@ -39,20 +69,21 @@ export default function Credit() {
     setError(null)
     try {
       setResult(
-        await postCredit(target, withGroup ? 0 : undefined, withGroup ? 50000000 : undefined),
+        await postCredit(
+          target,
+          withGroup ? Number(DEMO_GROUP_ID) : undefined,
+          withGroup ? DEMO_GROUP_EXPOSURE : undefined,
+        ),
       )
       setOffline(false)
     } catch (err) {
       // 完全無法連線（斷網/DNS/CORS）或後端本身出錯（5xx，含 Vercel 冷啟動逾時）時
       // 退回內建快照，讓現場演示不中斷；畫面會明確標示為離線快照。
       // 4xx（例如 VITE_API_BASE 設錯導致的 404/405）不算——那是設定問題，
-      // 假裝查詢成功反而會掩蓋它。
-      if (
-        err instanceof ApiError &&
-        (err.status === 0 || err.status >= 500) &&
-        target === '泰昇精密'
-      ) {
-        setResult(CREDIT_SNAPSHOT)
+      // 假裝查詢成功反而會掩蓋它。兩個示範企業都有各自的離線快照，
+      // 現場切到對照組（禾昌五金）也不會只剩一行錯誤訊息。
+      if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
+        setResult(target === '泰昇精密' ? CREDIT_SNAPSHOT : CREDIT_CONTROL_SNAPSHOT)
         setOffline(true)
       } else {
         // 清掉上一次的結果，避免畫面同時顯示錯誤條與舊的（且可能是別家公司的）決策卡。
@@ -76,7 +107,9 @@ export default function Credit() {
         <h1 className="text-2xl font-semibold">授信意見書</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           企業申請週轉金，財務報表看起來健康、無退票紀錄——傳統財報審核會直接放行。
-          以下展示企業關係圖如何揭露財報看不到的三件事：封閉資金環、買方集中與空殼過水。
+          以下展示企業關係圖如何揭露財報看不到的三個結構問題：申請人自身即命中封閉資金環與買方集中，
+          而它所在的資金環上，還有一段由宏益企業（空殼中介）經手的過水——申請人身處其中、
+          卻不是三者的直接發動者，這正是關係圖比孤立看單一公司財報多看到的東西。
         </p>
       </div>
 
@@ -152,6 +185,20 @@ export default function Credit() {
             </div>
           </Panel>
 
+          {result.group_id !== null && result.group_exposure_twd !== null && (
+            <Panel title="集團歸戶脈絡（呼叫端提供）">
+              <p className="text-sm leading-relaxed text-muted">
+                依呼叫端提供之歸戶結果：本企業屬集團編號{' '}
+                <span className="font-semibold text-ink">{result.group_id}</span>，
+                該集團合計曝險為{' '}
+                <span className="font-semibold text-ink">
+                  {formatTwd(result.group_exposure_twd)}
+                </span>
+                。此為呼叫端提供之歸戶結果，非本頁面自行判定。
+              </p>
+            </Panel>
+          )}
+
           <Panel title="建議">
             <p
               className="rounded border-l-4 pl-4 text-3xl font-semibold leading-relaxed text-ink"
@@ -221,8 +268,9 @@ export default function Credit() {
                   <tr className="border-b border-line text-xs text-muted">
                     <th className="py-2 pr-4">企業</th>
                     <th className="py-2 pr-4">角色</th>
+                    <th className="py-2 pr-4">圖例</th>
                     <th className="py-2 pr-4">分數</th>
-                    <th className="py-2 pr-4">風險等級</th>
+                    <th className="py-2 pr-4">關注等級</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,9 +278,18 @@ export default function Credit() {
                     <tr key={node.id} className="border-b border-line/50">
                       <td className="py-2 pr-4">{node.id}</td>
                       <td className="py-2 pr-4">{node.role_zh}</td>
+                      <td className="py-2 pr-4">
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-3 w-3 rounded-full align-middle"
+                          style={{
+                            backgroundColor: nodeColor(node, { scheme: 'role', focus: result.target }),
+                          }}
+                        />
+                      </td>
                       <td className="py-2 pr-4">{node.score.toFixed(2)}</td>
-                      <td className="py-2 pr-4" style={{ color: riskColor(node.label) }}>
-                        {RISK_LABEL_ZH[node.label]}
+                      <td className="py-2 pr-4" style={{ color: ATTENTION_COLOR_BY_GRAPH_LABEL[node.label] }}>
+                        {ATTENTION_LEVEL_ZH[node.label] ?? node.label}
                       </td>
                     </tr>
                   ))}

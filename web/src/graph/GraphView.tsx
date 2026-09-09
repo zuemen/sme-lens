@@ -16,8 +16,12 @@ const STYLE: cytoscape.StylesheetJson = [
       height: 'data(size)',
       label: 'data(label)',
       color: '#e6edf3',
-      'font-size': 9,
-      'font-family': 'ui-monospace, Menlo, monospace',
+      // 9px + 純 ASCII 字體堆疊是為地址設計的；企金劇本標籤是中文公司名，
+      // 該堆疊沒有 CJK 字型會被瀏覽器代換成更小的預設字，投影時完全看不清。
+      // 14px 搭配 web/index.html 已載入的 Noto Sans TC 放在最前面，防詐頁（ASCII 地址）
+      // 一樣落在 fallback 的 ui-monospace/Menlo，不受影響。
+      'font-size': 14,
+      'font-family': '"Noto Sans TC", ui-monospace, Menlo, monospace',
       'text-valign': 'bottom',
       'text-margin-y': 4,
       'border-width': 0,

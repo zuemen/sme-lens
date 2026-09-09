@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
-import { CREDIT_SNAPSHOT } from '../api/snapshot'
+import { CREDIT_CONTROL_SNAPSHOT, CREDIT_SNAPSHOT } from '../api/snapshot'
 import Credit from './Credit'
 
 // 只 mock postCredit；ApiError 用真的 class，因為頁面用 `instanceof ApiError` 判斷。
@@ -31,7 +31,11 @@ describe('授信意見書頁', () => {
 
     screen.getByRole('button', { name: '產生授信意見書' }).click()
 
-    await waitFor(() => expect(screen.getByText(CREDIT_SNAPSHOT.label_zh)).toBeDefined())
+    // 「關注」同時可能出現在頂部關注等級與節點表格的「關注等級」欄位（Fix 5：
+    // 圖上 high／medium／low 映回 關注／留意／正常），故用 getAllByText。
+    await waitFor(() =>
+      expect(screen.getAllByText(CREDIT_SNAPSHOT.label_zh).length).toBeGreaterThan(0),
+    )
     expect(screen.getByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeDefined()
     // 命中圖樣的中文描述必須逐條列出，不能只給一個分數
     for (const hit of CREDIT_SNAPSHOT.motif_hits) {
@@ -88,5 +92,60 @@ describe('授信意見書頁', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
     expect(screen.queryByText(/離線快照/)).toBeNull()
     expect(screen.queryByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeNull()
+  })
+
+  it('切到對照組（禾昌五金）後斷網（status 0），也要退回對照組自己的離線快照，而不是泰昇精密的', async () => {
+    mockedPostCredit.mockRejectedValue(new ApiError(0, '無法連線到分析服務，請確認網路後重試。'))
+    render(<Credit />)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '禾昌五金' } })
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() =>
+      expect(screen.getByText(CREDIT_CONTROL_SNAPSHOT.recommendation_zh)).toBeDefined(),
+    )
+    expect(screen.getByText(/離線快照/)).toBeDefined()
+    // 不能是泰昇精密那份快照的建議文字（兩者不同，混用就代表 fallback 選錯了公司）
+    expect(screen.queryByText(CREDIT_SNAPSHOT.recommendation_zh)).toBeNull()
+  })
+
+  it('切到對照組（禾昌五金）後 5xx（含冷啟動逾時），同樣退回對照組自己的離線快照', async () => {
+    mockedPostCredit.mockRejectedValue(new ApiError(504, '分析服務回應異常（HTTP 504）。'))
+    render(<Credit />)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '禾昌五金' } })
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() =>
+      expect(screen.getByText(CREDIT_CONTROL_SNAPSHOT.recommendation_zh)).toBeDefined(),
+    )
+    expect(screen.getByText(/離線快照/)).toBeDefined()
+  })
+
+  it('勾選「帶入集團歸戶脈絡」且回傳有集團資料時，顯示集團編號與集團曝險，並標示為呼叫端提供', async () => {
+    mockedPostCredit.mockResolvedValue({
+      ...CREDIT_SNAPSHOT,
+      group_id: 0,
+      group_exposure_twd: 50_000_000,
+    })
+    render(<Credit />)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '帶入集團歸戶脈絡' }))
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getAllByText(/呼叫端提供/).length).toBeGreaterThan(0))
+    expect(screen.getByText(/50,000,000/)).toBeDefined()
+  })
+
+  it('未勾選「帶入集團歸戶脈絡」時（group_id 為 null），不顯示集團歸戶脈絡區塊', async () => {
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() =>
+      expect(screen.getAllByText(CREDIT_SNAPSHOT.label_zh).length).toBeGreaterThan(0),
+    )
+    expect(screen.queryByText(/呼叫端提供/)).toBeNull()
   })
 })
