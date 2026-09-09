@@ -41,18 +41,35 @@ describe('集團歸戶頁', () => {
     }
   })
 
-  it('顯示申報集團數與實際歸戶數的對比', async () => {
+  it('顯示申報集團數與實際歸戶數的對比：客戶申報 2 個，關係圖歸戶後只剩 1 個', async () => {
     mockedPostGroup.mockResolvedValue(GROUP_SNAPSHOT)
     render(<Group />)
 
     screen.getByRole('button', { name: /執行集團歸戶/ }).click()
 
-    // 客戶申報 2 個集團，實際歸戶 1 個——這個落差就是本頁的重點
-    const actual = new Set(Object.values(GROUP_SNAPSHOT.groups)).size
+    // 這裡刻意斷言這個 fixture 的字面正確值，不能用跟實作相同的公式反推期望值
+    // ——否則測試只會驗證「實作內部一致」，驗證不出「實作算錯了」。
+    // 客戶申報 2 個集團（泰昇集團、昇泰集團）；限縮到申報名單後，
+    // 三家全落在 group 0，關係圖歸戶後只剩 1 個。
     await waitFor(() =>
-      expect(screen.getByTestId('group-count-actual').textContent).toContain(String(actual)),
+      expect(screen.getByTestId('group-count-actual').textContent).toContain('1'),
     )
     expect(screen.getByTestId('group-count-declared').textContent).toContain('2')
+  })
+
+  it('顯示曝險落差：最大申報集團 4,200 萬 vs 併入後實際 5,000 萬，差 800 萬', async () => {
+    mockedPostGroup.mockResolvedValue(GROUP_SNAPSHOT)
+    render(<Group />)
+
+    screen.getByRole('button', { name: /執行集團歸戶/ }).click()
+
+    // 對比的基準是「最大申報集團」（泰昇集團 = 泰昇精密 30,000,000 + 泰昇投資 12,000,000
+    // = 42,000,000），不是三家全部加總（那樣兩邊都是 50,000,000，落差恆為 0）。
+    await waitFor(() =>
+      expect(screen.getByTestId('group-exposure-declared').textContent).toContain('42,000,000'),
+    )
+    expect(screen.getByTestId('group-exposure-actual').textContent).toContain('50,000,000')
+    expect(screen.getByTestId('group-exposure-gap').textContent).toContain('8,000,000')
   })
 
   it('完全無法連線（status 0）時退回離線快照', async () => {

@@ -34,8 +34,46 @@ function formatTwd(amount: number): string {
 /** 客戶申報的獨立集團數（依 declared_groups 的相異值數）。 */
 const DECLARED_GROUP_COUNT = new Set(Object.values(DEMO_DECLARED)).size
 
-function declaredTotal(): number {
-  return Object.values(DEMO_EXPOSURES).reduce((sum, value) => sum + value, 0)
+/** 每個「申報集團名稱」的申報曝險合計（例如「泰昇集團」= 泰昇精密 + 泰昇投資）。 */
+function declaredGroupTotals(): Record<string, number> {
+  const totals: Record<string, number> = {}
+  for (const [company, groupName] of Object.entries(DEMO_DECLARED)) {
+    const exposure = DEMO_EXPOSURES[company] ?? 0
+    totals[groupName] = (totals[groupName] ?? 0) + exposure
+  }
+  return totals
+}
+
+/** 客戶申報曝險最高的那個集團名稱——對比的基準必須是「最大申報集團」，不是全部加總。 */
+function largestDeclaredGroupName(): string {
+  const totals = declaredGroupTotals()
+  const [name] = Object.entries(totals).sort(([, a], [, b]) => b - a)[0]
+  return name
+}
+
+/**
+ * 實際歸戶集團數，**只**看客戶申報名單內的公司。
+ * 名單外但曝險資料裡出現的公司（例如禾昌五金）不申報，本來就跟「客戶申報 vs 實際歸戶」
+ * 的對比無關；把它算進去會把分母灌水，讓「合併」在頭條數字上消失不見。
+ */
+function actualDeclaredGroupCount(result: GroupResult): number {
+  const ids = new Set(
+    Object.keys(DEMO_DECLARED)
+      .map((company) => result.groups[company])
+      .filter((id): id is number => id !== undefined),
+  )
+  return ids.size
+}
+
+/** 給定一個申報集團名稱，找出歸戶後對應的實際集團編號（從屬於該申報集團的公司反查，不假設為 0）。 */
+function mergedGroupIdFor(result: GroupResult, declaredGroupName: string): number | null {
+  const companies = Object.entries(DEMO_DECLARED)
+    .filter(([, name]) => name === declaredGroupName)
+    .map(([company]) => company)
+  for (const company of companies) {
+    if (company in result.groups) return result.groups[company]
+  }
+  return null
 }
 
 export default function Group() {
@@ -78,10 +116,23 @@ export default function Group() {
     }
   }
 
-  const actualGroupCount = result ? new Set(Object.values(result.groups)).size : null
-  const actualTotal = result
-    ? Object.values(result.exposures).reduce((sum, value) => sum + value, 0)
-    : null
+  const largestGroupName = largestDeclaredGroupName()
+  const declaredLargestExposure = declaredGroupTotals()[largestGroupName]
+
+  const actualGroupCount = result ? actualDeclaredGroupCount(result) : null
+  const mergedGroupId = result ? mergedGroupIdFor(result, largestGroupName) : null
+  const actualExposureForMergedGroup =
+    result && mergedGroupId !== null ? (result.exposures[String(mergedGroupId)] ?? null) : null
+  const exposureGap =
+    actualExposureForMergedGroup !== null ? actualExposureForMergedGroup - declaredLargestExposure : null
+
+  // 隱性關聯裡「不屬於最大申報集團」的那一條，用來在頭條句子點名是哪家公司、哪個自然人
+  // 讓合併從無到有——資料驅動，不在文案裡寫死公司名。
+  const revealingLink =
+    result?.hidden_links.find(
+      (link) =>
+        link.declared_group_a !== largestGroupName || link.declared_group_b !== largestGroupName,
+    ) ?? null
 
   return (
     <div className="space-y-6">
@@ -140,17 +191,26 @@ export default function Group() {
         <ErrorNotice message="目前顯示的是內建離線快照（案例固定為泰昇集團／昇泰集團名冊），非即時查詢結果——已標示為離線快照。" />
       )}
 
-      {result && actualGroupCount !== null && actualTotal !== null && (
+      {result &&
+        actualGroupCount !== null &&
+        actualExposureForMergedGroup !== null &&
+        exposureGap !== null && (
         <>
-          <Panel title="申報 vs. 實際：曝險被拆散在幾個看似無關的借款戶之間">
+          <Panel title="申報 vs. 實際：客戶申報的集團數與最大集團曝險，關係圖歸戶後怎麼變">
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="rounded-lg border border-line p-4">
                 <div className="text-xs text-muted">客戶申報</div>
                 <div className="tabular mt-1 text-4xl font-semibold text-muted">
                   <span data-testid="group-count-declared">{DECLARED_GROUP_COUNT}</span> 個集團
                 </div>
-                <div className="tabular mt-2 text-lg text-muted">
-                  合計申報曝險 {formatTwd(declaredTotal())}
+                <div
+                  className="tabular mt-3 text-4xl font-semibold text-muted"
+                  data-testid="group-exposure-declared"
+                >
+                  {formatTwd(declaredLargestExposure)}
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  最大申報集團「{largestGroupName}」的申報曝險
                 </div>
               </div>
               <div
@@ -167,20 +227,39 @@ export default function Group() {
                   <span data-testid="group-count-actual">{actualGroupCount}</span> 個集團
                 </div>
                 <div
-                  className="tabular mt-2 text-lg font-semibold"
+                  className="tabular mt-3 text-4xl font-semibold"
                   style={{ color: 'var(--color-risk-high)' }}
+                  data-testid="group-exposure-actual"
                 >
-                  實際合計曝險 {formatTwd(actualTotal)}
+                  {formatTwd(actualExposureForMergedGroup)}
+                  <span className="ml-2 text-xl" data-testid="group-exposure-gap">
+                    （+{formatTwd(exposureGap)}）
+                  </span>
+                </div>
+                <div className="mt-1 text-xs" style={{ color: 'var(--color-risk-high)' }}>
+                  同一集團的實際合併曝險（含被拆散在外的部分）
                 </div>
               </div>
             </div>
-            <p
-              className="mt-4 rounded border-l-4 pl-4 text-2xl font-semibold leading-relaxed text-ink"
-              style={{ borderColor: 'var(--color-risk-high)' }}
-            >
-              客戶申報 {DECLARED_GROUP_COUNT} 個獨立集團（合計 {formatTwd(declaredTotal())}），
-              關係圖證明其實是同一個集團——實際曝險應為 {formatTwd(actualTotal)}，
-              比申報數字高出 {formatTwd(actualTotal - declaredTotal())}，且這個落差在申報名冊裡完全看不見。
+            <p className="mt-4 text-base leading-relaxed text-muted">
+              客戶申報 {DECLARED_GROUP_COUNT} 個獨立集團，關係圖歸戶後只剩 {actualGroupCount} 個
+              ——
+              {revealingLink ? (
+                <>
+                  <span className="font-semibold text-ink">{revealingLink.company_a}</span> 與{' '}
+                  <span className="font-semibold text-ink">{revealingLink.company_b}</span>{' '}
+                  因共用自然人{' '}
+                  <span className="font-semibold text-ink">
+                    {revealingLink.shared_persons.join('、')}
+                  </span>{' '}
+                  而併為同一集團。
+                </>
+              ) : (
+                '關係圖比對出客戶未申報的共同持有／共用董監事關係。'
+              )}{' '}
+              最大申報集團「{largestGroupName}」原申報曝險為 {formatTwd(declaredLargestExposure)}，
+              併入後實際曝險為 {formatTwd(actualExposureForMergedGroup)}，
+              多出的 {formatTwd(exposureGap)} 原本以另一個獨立集團的名義申報，在名冊裡完全看不出來。
             </p>
           </Panel>
 
