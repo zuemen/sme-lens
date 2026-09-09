@@ -3,27 +3,37 @@
     {
       "company": "泰昇精密",
       "person": "陳大明",
-      "role": "董事長"
+      "role": "董事長",
+      "company_id": "DEMO-CO-0001",
+      "person_id": "DEMO-PID-0001"
     },
     {
       "company": "泰昇投資",
       "person": "陳大明",
-      "role": "董事"
+      "role": "董事",
+      "company_id": "DEMO-CO-0002",
+      "person_id": "DEMO-PID-0001"
     },
     {
       "company": "昇泰貿易",
       "person": "王秀英",
-      "role": "董事"
+      "role": "董事",
+      "company_id": "DEMO-CO-0003",
+      "person_id": "DEMO-PID-0002"
     },
     {
       "company": "泰昇投資",
       "person": "王秀英",
-      "role": "監察人"
+      "role": "監察人",
+      "company_id": "DEMO-CO-0002",
+      "person_id": "DEMO-PID-0002"
     },
     {
       "company": "禾昌五金",
       "person": "林志豪",
-      "role": "董事長"
+      "role": "董事長",
+      "company_id": "DEMO-CO-0004",
+      "person_id": "DEMO-PID-0003"
     }
   ],
   "declared": {

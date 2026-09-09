@@ -147,6 +147,39 @@ def test_build_company_graph_normalises_names():
     assert groups["丙公司"] == groups["丁公司"]
 
 
+def test_same_name_different_identifiers_do_not_merge():
+    """六個互不相干、恰好都叫「陳志明」的自然人，各自掛名一家公司——沒有
+    person_id 時（純名稱比對）會全部併成一個集團，這是本測試要擋下的迴歸：
+    identifier 不同時，即使名稱字串完全相同，公司也不得被併在一起。
+    """
+    affiliations = [
+        Affiliation(f"公司{i}號", "陳志明", person_id=f"ID{i}") for i in range(1, 7)
+    ]
+
+    g = build_company_graph(affiliations)
+    groups = detect_groups(g)
+
+    group_ids = {groups[f"公司{i}號"] for i in range(1, 7)}
+    assert len(group_ids) == 6  # 六家公司各自獨立成一個集團，一個都不能併
+    assert len(hidden_links(g, {})) == 0  # 不同 identifier 之間不構成隱性關聯
+
+
+def test_same_identifier_different_name_spellings_merge():
+    """同一個 person_id、名稱寫法不同（尾隨空白、全形數字變體）仍須視為同一人，
+    共用者的公司要合併——這正是本模組要抓的「換個寫法規避比對」。
+    """
+    affiliations = [
+        Affiliation("甲公司", "王小明", person_id="P001"),
+        Affiliation("乙公司", "王小明 ", person_id="P001"),  # 尾隨空白
+        Affiliation("丙公司", "王小明１", person_id="P001"),  # 全形數字變體
+    ]
+
+    g = build_company_graph(affiliations)
+    groups = detect_groups(g)
+
+    assert groups["甲公司"] == groups["乙公司"] == groups["丙公司"]
+
+
 def test_hidden_links_sentinel_cannot_be_spoofed():
     """客戶不得藉由申報一個撞到內部哨符的集團名，抹掉真實的隱性關聯。"""
     affiliations = [Affiliation("甲公司", "王小明"), Affiliation("乙公司", "王小明")]

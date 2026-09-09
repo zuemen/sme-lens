@@ -26,12 +26,47 @@ from smelens.api.main import app
 
 OUT_DIR = Path("web/src/api")
 
+# company_id／person_id 為虛構的示範識別碼（格式故意不像真實統一編號／身分證字號，
+# 避免被誤認為真實登記資料），用來展示 FIX 3 的真正機制：歸戶依 identifier 判斷
+# 「是不是同一個實體」，名稱字串只用來顯示。同一自然人（陳大明、王秀英）在不同
+# 公司底下的 person_id 保持一致，才是這個示範真正在測的東西——如果只靠名稱字串，
+# 遇到同名不同人／同人換名這兩種情況都會判斷錯誤（見 smelens/credit/group.py）。
 DEMO_AFFILIATIONS = [
-    {"company": "泰昇精密", "person": "陳大明", "role": "董事長"},
-    {"company": "泰昇投資", "person": "陳大明", "role": "董事"},
-    {"company": "昇泰貿易", "person": "王秀英", "role": "董事"},
-    {"company": "泰昇投資", "person": "王秀英", "role": "監察人"},
-    {"company": "禾昌五金", "person": "林志豪", "role": "董事長"},
+    {
+        "company": "泰昇精密",
+        "person": "陳大明",
+        "role": "董事長",
+        "company_id": "DEMO-CO-0001",
+        "person_id": "DEMO-PID-0001",
+    },
+    {
+        "company": "泰昇投資",
+        "person": "陳大明",
+        "role": "董事",
+        "company_id": "DEMO-CO-0002",
+        "person_id": "DEMO-PID-0001",
+    },
+    {
+        "company": "昇泰貿易",
+        "person": "王秀英",
+        "role": "董事",
+        "company_id": "DEMO-CO-0003",
+        "person_id": "DEMO-PID-0002",
+    },
+    {
+        "company": "泰昇投資",
+        "person": "王秀英",
+        "role": "監察人",
+        "company_id": "DEMO-CO-0002",
+        "person_id": "DEMO-PID-0002",
+    },
+    {
+        "company": "禾昌五金",
+        "person": "林志豪",
+        "role": "董事長",
+        "company_id": "DEMO-CO-0004",
+        "person_id": "DEMO-PID-0003",
+    },
 ]
 DEMO_DECLARED = {
     "泰昇精密": "泰昇集團",

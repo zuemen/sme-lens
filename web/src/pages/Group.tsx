@@ -197,6 +197,12 @@ export default function Group() {
         <ErrorNotice message="目前顯示的是內建離線快照（案例固定為泰昇集團／昇泰集團名冊），非即時查詢結果——已標示為離線快照。" />
       )}
 
+      {result?.truncated && (
+        <ErrorNotice
+          message={`本次隱性關聯筆數過多，僅列出共用自然人數最高的 ${result.hidden_links.length} 筆（依共用人數排序，實際共找到 ${result.hidden_links_total} 筆）。下方清單並非全部隱性關聯，其餘筆數請一併交付人工覆核。`}
+        />
+      )}
+
       {result && (
         <div ref={resultsRef} className="space-y-6">
           {actualGroupCount !== null &&

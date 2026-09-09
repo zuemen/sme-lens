@@ -355,11 +355,18 @@ class CreditRequest(BaseModel):
 
 
 class AffiliationInput(BaseModel):
-    """一筆公司—自然人關係。"""
+    """一筆公司—自然人關係。
+
+    company_id（公司統一編號）與 person_id（自然人識別碼）皆為選填，一旦提供
+    即為歸戶依據，優先於名稱字串——見 smelens.credit.group.Affiliation 的
+    docstring：名稱比對抓不出「同名不同人」也擋不住「同人換名」，identifier 才行。
+    """
 
     company: str
     person: str
     role: str = "董監事"
+    company_id: str | None = None
+    person_id: str | None = None
 
 
 class GroupRequest(BaseModel):
@@ -442,7 +449,14 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
         raise HTTPException(status_code=400, detail="affiliations 不得為空")
 
     company_graph = build_company_graph(
-        Affiliation(company=a.company, person=a.person, role=a.role) for a in req.affiliations
+        Affiliation(
+            company=a.company,
+            person=a.person,
+            role=a.role,
+            company_id=a.company_id,
+            person_id=a.person_id,
+        )
+        for a in req.affiliations
     )
     groups = detect_groups(company_graph)
     totals = group_exposure(groups, req.exposures)

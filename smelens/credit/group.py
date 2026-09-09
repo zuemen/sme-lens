@@ -29,11 +29,33 @@ def normalise_name(name: str) -> str:
 
 @dataclass(frozen=True)
 class Affiliation:
-    """一筆公司—自然人關係（董監事、股東或負責人）。"""
+    """一筆公司—自然人關係（董監事、股東或負責人）。
+
+    company_id（公司統一編號）與 person_id（自然人的識別碼，例如身分證字號的
+    去識別化代碼）皆為選填。兩者一旦提供，就是本模組判斷「是不是同一個實體」
+    的依據，名稱只用來顯示——這不是便利性欄位，是正確性欄位：全台叫「陳志明」
+    的自然人不只一個，光憑名稱字串比對，六個互不相干的陳志明會被歸成同一個
+    集團；反過來，真正想藏身的人只要換一種名稱寫法掛名，也能繞過名稱比對。
+    有 identifier 就用 identifier，沒有才退回正規化後的名稱——與先前完全一致，
+    既有只傳名稱的呼叫方行為不變。
+    """
 
     company: str
     person: str
     role: str = "董監事"
+    company_id: str | None = None
+    person_id: str | None = None
+
+
+def _identity_key(name: str, identifier: str | None, prefix: str) -> str:
+    """實體鍵：identifier 提供時回傳識別碼衍生鍵，否則回傳正規化後的名稱。
+
+    identifier 一律加上 prefix（"cid"／"pid"）區隔命名空間，避免識別碼衍生鍵
+    與某個公司或自然人恰好正規化後長得一樣的名稱字串相撞。
+    """
+    if identifier:
+        return f"{prefix}:{normalise_name(identifier)}"
+    return normalise_name(name)
 
 
 def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
@@ -41,32 +63,50 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
 
     邊屬性 weight = 共用的自然人數；shared = 共用自然人名單（排序後）。
     無任何共用關係的公司仍會入圖成為孤立節點——歸戶時不能把它們漏掉。
+
+    公司與自然人的「同一實體」判斷一律 identifier 優先、名稱退回（見
+    Affiliation 與 _identity_key）：同一 person_id 底下不論名稱寫法（含尾隨
+    空白、全形變體）都視為同一人；不同 person_id 即使名稱字串相同也視為不同
+    人，不會因為同名而把互不相干的公司併成一個集團。
     """
-    records = [
-        Affiliation(
-            company=normalise_name(item.company),
-            person=normalise_name(item.person),
-            role=item.role,
-        )
-        for item in affiliations
-    ]
+    raw = list(affiliations)
+
+    # 節點鍵在有 company_id 時是識別碼衍生字串（"cid:..."），下游（API 回應、
+    # 曝險比對、隱性關聯清單）全部把節點鍵當公司顯示名稱使用，故最後要 relabel
+    # 回顯示名稱（同一識別碼底下第一次出現的正規化名稱）。沒有 company_id 時，
+    # 這個對照是恆等映射，relabel 等於沒做，行為與先前完全相同。
+    company_display: dict[str, str] = {}
+    person_display: dict[str, str] = {}
+
+    def company_key(item: Affiliation) -> str:
+        key = _identity_key(item.company, item.company_id, "cid")
+        company_display.setdefault(key, normalise_name(item.company))
+        return key
+
+    def person_key(item: Affiliation) -> str:
+        key = _identity_key(item.person, item.person_id, "pid")
+        person_display.setdefault(key, normalise_name(item.person))
+        return key
+
     by_person: dict[str, set[str]] = {}
-    for item in records:
-        by_person.setdefault(item.person, set()).add(item.company)
+    for item in raw:
+        by_person.setdefault(person_key(item), set()).add(company_key(item))
 
     g = nx.Graph()
-    for item in records:
-        g.add_node(item.company)
+    for item in raw:
+        g.add_node(company_key(item))
     for person, companies in by_person.items():
+        person_name = person_display[person]
         for u, v in combinations(sorted(companies), 2):
             if g.has_edge(u, v):
                 g[u][v]["weight"] += 1
-                g[u][v]["shared"].append(person)
+                g[u][v]["shared"].append(person_name)
             else:
-                g.add_edge(u, v, weight=1, shared=[person])
+                g.add_edge(u, v, weight=1, shared=[person_name])
     for _, _, data in g.edges(data=True):
         data["shared"].sort()
-    return g
+
+    return nx.relabel_nodes(g, company_display)
 
 
 def detect_groups(company_graph: nx.Graph) -> dict[str, int]:

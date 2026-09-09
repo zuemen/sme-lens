@@ -126,6 +126,10 @@ export interface AffiliationInput {
   company: string
   person: string
   role?: string
+  /** 公司統一編號；提供時歸戶以此為準，而非公司名稱字串 */
+  company_id?: string
+  /** 自然人識別碼；提供時歸戶以此為準，而非姓名字串（同名不同人／同人換名都靠它判斷） */
+  person_id?: string
 }
 
 export interface HiddenLink {
@@ -141,7 +145,12 @@ export interface GroupResult {
   groups: Record<string, number>
   /** 集團編號（字串鍵）→ 曝險合計 */
   exposures: Record<string, number>
+  /** 依共用自然人數由高到低排序，可能已截斷；見 hidden_links_total／truncated */
   hidden_links: HiddenLink[]
+  /** 截斷前，關係圖上實際找到的隱性關聯總筆數 */
+  hidden_links_total: number
+  /** 超過上限而截斷；前端必須告知使用者畫面上並非全部隱性關聯 */
+  truncated: boolean
   /** 有曝險但不在名冊中的公司；後端刻意列名而非靜默丟棄 */
   unattributed: string[]
 }

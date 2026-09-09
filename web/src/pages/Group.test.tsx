@@ -92,6 +92,32 @@ describe('集團歸戶頁', () => {
     expect(screen.getByText(/離線快照/)).toBeDefined()
   })
 
+  // FIX 1：hidden_links 可能已被後端截斷（依共用自然人數排序只回傳前 N 筆），
+  // 畫面必須明確告知真正的總筆數，不能讓人以為表格裡的就是全部隱性關聯。
+  it('truncated 為 true 時，顯示截斷提示並點名真正的總筆數', async () => {
+    mockedPostGroup.mockResolvedValue({
+      ...GROUP_SNAPSHOT,
+      hidden_links_total: 137,
+      truncated: true,
+    })
+    render(<Group />)
+
+    screen.getByRole('button', { name: /執行集團歸戶/ }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
+    expect(screen.getByText(/137/)).toBeDefined()
+  })
+
+  it('truncated 為 false 時，不顯示截斷提示', async () => {
+    mockedPostGroup.mockResolvedValue(GROUP_SNAPSHOT)
+    render(<Group />)
+
+    screen.getByRole('button', { name: /執行集團歸戶/ }).click()
+
+    await waitFor(() => expect(screen.getByText(/隱性關聯/)).toBeDefined())
+    expect(screen.queryAllByRole('alert')).toHaveLength(0)
+  })
+
   it('4xx（例如 API base 設錯導致的 404）不觸發快照，只顯示錯誤訊息', async () => {
     mockedPostGroup.mockRejectedValue(new ApiError(404, '查無資料。'))
     render(<Group />)
