@@ -106,3 +106,34 @@ def test_hidden_links_reports_undeclared_relation():
     assert found[0]["shared_persons"] == ["王秀英"]
     assert found[0]["declared_group_a"] == "昇泰集團"
     assert found[0]["declared_group_b"] == "泰昇集團"
+
+
+def test_build_company_graph_normalises_names():
+    """尾隨空白與全形字元不得讓同一個人被當成兩個人。
+
+    手動輸入的名冊常見這種寫法差異；對法遵工具而言，若不正規化，多打一個空格
+    就是零成本的規避手法。
+    """
+    affiliations = [
+        Affiliation("甲公司", "王小明"),
+        Affiliation("乙公司", "王小明 "),
+        Affiliation("丙公司", "王小明１"),
+        Affiliation("丁公司", "王小明1"),
+    ]
+
+    g = build_company_graph(affiliations)
+    groups = detect_groups(g)
+
+    assert g.has_edge("甲公司", "乙公司")
+    assert groups["丙公司"] == groups["丁公司"]
+
+
+def test_hidden_links_sentinel_cannot_be_spoofed():
+    """客戶不得藉由申報一個撞到內部哨符的集團名，抹掉真實的隱性關聯。"""
+    affiliations = [Affiliation("甲公司", "王小明"), Affiliation("乙公司", "王小明")]
+    g = build_company_graph(affiliations)
+
+    found = hidden_links(g, {"甲公司": "__undeclared__乙公司"})
+
+    assert len(found) == 1
+    assert found[0]["shared_persons"] == ["王小明"]

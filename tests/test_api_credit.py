@@ -134,3 +134,32 @@ def test_credit_graph_target_narrative_matches_top_level():
     target_node = next(n for n in body["graph"]["nodes"] if n["id"] == CREDIT_APPLICANT)
     assert target_node["narrative_zh"] == body["narrative_zh"]
     assert "歸戶集團編號 #0" in target_node["narrative_zh"]
+
+
+def test_credit_rejects_non_finite_exposure():
+    """NaN／Infinity 的曝險金額必須當場擋下，不能寫進授信意見書。"""
+    for bad in ("NaN", "Infinity", "-Infinity"):
+        response = client.post(
+            "/credit",
+            content=f'{{"target": "泰昇精密", "group_id": 1, "group_exposure_twd": {bad}}}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert response.status_code == 422, bad
+
+
+def test_credit_rejects_negative_exposure_and_group_id():
+    """負數曝險與負數集團編號在金融語意上不成立。"""
+    assert client.post(
+        "/credit", json={"target": "泰昇精密", "group_exposure_twd": -1}
+    ).status_code == 422
+    assert client.post("/credit", json={"target": "泰昇精密", "group_id": -1}).status_code == 422
+
+
+def test_group_rejects_oversized_roster():
+    """名冊筆數需設上限：build_company_graph 對共用同一人的公司是 O(n²)。"""
+    response = client.post(
+        "/group",
+        json={"affiliations": [{"company": f"C{i}", "person": "P"} for i in range(501)]},
+    )
+
+    assert response.status_code == 422

@@ -43,7 +43,7 @@ def _motif_sentence(node: Any, hit: Any) -> str:
         )
     # 其餘情形 center 就是本公司，把「節點 X」改寫為「本公司」——「節點」是圖論
     # 術語，出現在寫給授信人員的文件裡會讓讀者出戲。
-    return text.replace(f"節點 {node} ", "本公司 ", 1)
+    return text.replace(f"節點 {node} ", "本公司", 1)
 
 
 _RECOMMENDATION_ZH = {
@@ -179,8 +179,8 @@ def generate_credit_opinion(
         narrative.append(f"命中企金風險圖樣：{sentences}。")
     else:
         narrative.append("未命中任何企金風險圖樣。")
-    if g.in_degree(node) == 0:
-        narrative.append("本公司於本圖中無收入紀錄，買方結構無從評估。")
+    if diversity == 0.0:
+        narrative.append("本公司於本圖中無足以評估買方結構的收入紀錄。")
     else:
         narrative.append(
             f"交易對手多樣性 {diversity:.2f}"
@@ -192,7 +192,9 @@ def generate_credit_opinion(
             if group_exposure_twd is not None
             else ""
         )
-        narrative.append(f"歸戶集團編號 #{group_id}{exposure_text}。")
+        # 標明出處：歸戶脈絡是呼叫端傳入的，本模組並未自行核驗。不寫清楚的話，
+        # 一段由呼叫端填入的數字會被讀成系統推導出來的結論。
+        narrative.append(f"歸戶集團編號 #{group_id}（依呼叫端提供之歸戶結果）{exposure_text}。")
     if model_score is not None:
         narrative.append(f"GNN 模型判定違約機率 {model_score:.2f}。")
 

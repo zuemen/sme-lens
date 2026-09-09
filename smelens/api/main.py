@@ -20,6 +20,7 @@ OpenAPI 文件：http://localhost:8000/docs
 
 from __future__ import annotations
 
+import math
 import os
 import secrets
 from pathlib import Path
@@ -28,10 +29,12 @@ from typing import Any, Literal
 import httpx
 import networkx as nx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel, Field, model_validator
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from smelens.api.serialize import graph_to_json, sna_table
 from smelens.credit.group import (
@@ -72,6 +75,17 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """422 回應需先消毒非有限浮點數，理由見 `_sanitize_for_json`。"""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _sanitize_for_json(jsonable_encoder(exc.errors()))},
+    )
+
+
 RAW_DIR = Path("data/raw")
 
 # elliptic 模式全圖與管線結果快取（203k 節點載入＋SNA 需數分鐘，絕不可每請求重算）
@@ -80,6 +94,23 @@ _elliptic_cache: dict[str, tuple[nx.DiGraph, PipelineResult]] = {}
 # graph_to_json 與前端 RiskLabel 用的是 high/medium/low；授信意見書用 watch/caution/
 # normal。兩邊都有 .get 預設值，漏接不會拋錯、只會靜默吐出前端不認得的標籤。
 _GRAPH_LABEL_ZH = {"watch": "high", "caution": "medium", "normal": "low"}
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """遞迴把非有限浮點數（NaN／±Infinity）換成字串。
+
+    這類值正是本 API 要擋下的輸入（例如 group_exposure_twd=NaN），但 pydantic
+    的驗證錯誤內容會原封不動帶回這個輸入值；Starlette 的 JSONResponse 預設
+    `allow_nan=False`，序列化時會直接丟出 ValueError，讓本該回 422 的請求
+    變成 500——比完全不擋還糟。故渲染錯誤內容前先行消毒。
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_for_json(v) for v in value]
+    return value
 
 
 def _check_api_key(x_api_key: str | None) -> None:
@@ -292,11 +323,20 @@ def score(req: ScoreRequest, x_api_key: str | None = Header(default=None)) -> di
 class CreditRequest(BaseModel):
     """授信意見書請求：target 為劇本圖中的企業名稱。"""
 
-    target: str = Field(description="授信對象企業名稱")
-    group_id: int | None = Field(default=None, description="歸戶集團編號（選配）")
+    target: str = Field(description="授信對象企業名稱", max_length=128)
+    group_id: int | None = Field(default=None, ge=0, description="歸戶集團編號（選配）")
     group_exposure_twd: float | None = Field(
-        default=None, description="該集團授信曝險合計（新台幣元，選配）"
+        default=None, ge=0, description="該集團授信曝險合計（新台幣元，選配）"
     )
+
+    @field_validator("group_exposure_twd")
+    @classmethod
+    def _finite_exposure(cls, v: float | None) -> float | None:
+        # ge=0 擋得掉負數與 NaN（NaN 的比較一律為 False），但擋不掉 +Infinity。
+        # 放行的話，授信意見書會出現「合計 inf 元」而同一個回應的 JSON 欄位卻是 null。
+        if v is not None and not math.isfinite(v):
+            raise ValueError("group_exposure_twd 需為有限數值")
+        return v
 
 
 class AffiliationInput(BaseModel):
@@ -310,13 +350,28 @@ class AffiliationInput(BaseModel):
 class GroupRequest(BaseModel):
     """集團歸戶請求。"""
 
-    affiliations: list[AffiliationInput] = Field(description="公司—自然人關係名冊")
+    # 測得單一共用同一人的名冊：500 筆 0.63 秒、1500 筆 9.0 秒、3000 筆 50 秒——
+    # build_company_graph 對共用同一人的公司數是 O(n²)（combinations 逐對建邊）。
+    # 沒有上限的話，一份異常大的名冊就能讓 worker 卡住將近一分鐘。
+    affiliations: list[AffiliationInput] = Field(
+        description="公司—自然人關係名冊", max_length=500
+    )
     declared_groups: dict[str, str] = Field(
         default_factory=dict, description="客戶自行申報的集團代號"
     )
     exposures: dict[str, float] = Field(
         default_factory=dict, description="各公司授信餘額（新台幣元）"
     )
+
+    @field_validator("exposures")
+    @classmethod
+    def _finite_exposures(cls, v: dict[str, float]) -> dict[str, float]:
+        # 單一非有限值會讓整個集團加總變成 NaN，序列化後靜默成 null——
+        # 對銀行而言那是「曝險不明」而不是「輸入有誤」，必須當場擋下。
+        for company, amount in v.items():
+            if not math.isfinite(amount) or amount < 0:
+                raise ValueError(f"{company} 的曝險金額需為非負的有限數值")
+        return v
 
 
 @app.post("/credit")

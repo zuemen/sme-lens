@@ -7,12 +7,24 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 
 import networkx as nx
+
+
+def normalise_name(name: str) -> str:
+    """統一名稱寫法：NFKC 正規化、去除前後空白、把內部連續空白摺成單一空格。
+
+    手動輸入的董監事名冊常帶尾隨空白或全形字元。若不正規化，「王小明」與
+    「王小明 」會被當成兩個不同的人，共用董事的關聯就此查不出來——而那正是
+    本模組唯一要抓的東西。對一個法遵工具而言，這也意味著刻意多打一個空格
+    就是零成本的規避手法，故正規化是正確性要求，不是便利性。
+    """
+    return " ".join(unicodedata.normalize("NFKC", name).split())
 
 
 @dataclass(frozen=True)
@@ -30,7 +42,14 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     邊屬性 weight = 共用的自然人數；shared = 共用自然人名單（排序後）。
     無任何共用關係的公司仍會入圖成為孤立節點——歸戶時不能把它們漏掉。
     """
-    records = list(affiliations)
+    records = [
+        Affiliation(
+            company=normalise_name(item.company),
+            person=normalise_name(item.person),
+            role=item.role,
+        )
+        for item in affiliations
+    ]
     by_person: dict[str, set[str]] = {}
     for item in records:
         by_person.setdefault(item.person, set()).add(item.company)
@@ -72,7 +91,7 @@ def group_exposure(groups: dict[str, int], exposures: Mapping[str, float]) -> di
     """彙總各集團的授信曝險總額。不在 groups 內的公司一律忽略。"""
     totals: dict[int, float] = {}
     for company, amount in exposures.items():
-        group_id = groups.get(company)
+        group_id = groups.get(normalise_name(company))
         if group_id is None:
             continue
         totals[group_id] = totals.get(group_id, 0.0) + float(amount)
@@ -88,11 +107,16 @@ def hidden_links(
     獨立的集團。回傳每筆含兩家公司、共用自然人與雙方申報集團，供行員覆核
     ——本模組只負責把證據攤開，是否併入歸戶由授信人員判斷。
     """
+    declared_norm = {normalise_name(k): v for k, v in declared.items()}
     found: list[dict[str, Any]] = []
     for u, v, data in company_graph.edges(data=True):
         company_a, company_b = sorted([u, v])
-        group_a = declared.get(company_a, f"__undeclared__{company_a}")
-        group_b = declared.get(company_b, f"__undeclared__{company_b}")
+        # 哨符改用 tuple：申報值一律是字串，型別不同就永遠不會比較相等。原本以
+        # f"__undeclared__{company}" 當哨符，等於讓內部標記與「客戶自行申報的集團名」
+        # 共用同一個命名空間——客戶只要把申報值寫成剛好等於對方的哨符字串，兩邊就會
+        # 相等而抹掉一筆真實的隱性關聯。申報內容是不可信輸入，不能與內部標記同域。
+        group_a = declared_norm.get(company_a, ("__undeclared__", company_a))
+        group_b = declared_norm.get(company_b, ("__undeclared__", company_b))
         if group_a == group_b:
             continue
         found.append(
@@ -100,8 +124,8 @@ def hidden_links(
                 "company_a": company_a,
                 "company_b": company_b,
                 "shared_persons": list(data["shared"]),
-                "declared_group_a": declared.get(company_a),
-                "declared_group_b": declared.get(company_b),
+                "declared_group_a": declared_norm.get(company_a),
+                "declared_group_b": declared_norm.get(company_b),
             }
         )
     return sorted(found, key=lambda row: (row["company_a"], row["company_b"]))

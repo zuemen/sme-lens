@@ -27,8 +27,13 @@ def run_pipeline(g: nx.DiGraph) -> PipelineResult:
     motif_hits = detect_all(g)
     labels = {n: d.get("label", -1) for n, d in g.nodes(data=True)}
     if all(v < 0 for v in labels.values()):
-        # 無標註圖（如 TRON 即時圖）：以圖樣命中中心作為疑似非法的代理標註
-        labels = {h.center: 1 for h in motif_hits}
+        # 無標註圖（如 TRON 即時圖）：以圖樣命中中心作為疑似非法的代理標註。
+        # 全節點都要標（命中為 1、其餘為 0），社群風險比才會是「該社群有多少比例的
+        # 成員是命中中心」這個有鑑別力的比例；只標命中者會讓分母等於分子，任何含命中
+        # 的社群一律得到 1.0，等於對整個社群加一個無資訊的常數並灌高嚴重度。
+        labels = dict.fromkeys(g.nodes(), 0)
+        for hit in motif_hits:
+            labels[hit.center] = 1
     risk_ratios = community_risk_ratio(partition, labels)
     return sna_df, partition, risk_ratios, motif_hits
 

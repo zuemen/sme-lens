@@ -73,5 +73,7 @@ curl -X POST http://localhost:8000/group \
 核心圖引擎（SNA 指標、Louvain 社群偵測、GNN 模型、圖譜序列化）衍生自同作者的
 [ChainLens](https://github.com/zuemen/ChainLens)（MIT 授權），該專案已在虛擬資產
 詐騙金流場域驗證。企鏡在其上新增企金語意層：企業風險圖樣、集團歸戶與授信意見書。
+GNN 模型（`smelens/models/`）目前僅供離線訓練與評估，線上 API 一律以規則分數服務；
+意見書中的「0.5×模型 + 0.5×規則」融合路徑已實作並有測試涵蓋，但尚未接上線上端點。
 
 MIT License. See [LICENSE](LICENSE).
