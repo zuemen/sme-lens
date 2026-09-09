@@ -63,6 +63,25 @@ def test_detect_groups_is_transitive():
     assert groups["禾昌五金"] != groups["泰昇精密"]
 
 
+def test_detect_groups_ordering_is_deterministic():
+    """歸戶結果的鍵順序必須穩定：前端照這個順序渲染表格，跳動會讓同一筆查詢
+    看起來像不同的資料。連通元件是 set，不排序就會隨行程的 hash seed 改變。
+    """
+    affiliations = [
+        Affiliation("戊公司", "趙一"),
+        Affiliation("丁公司", "趙一"),
+        Affiliation("丙公司", "趙一"),
+        Affiliation("乙公司", "趙一"),
+        Affiliation("甲公司", "趙一"),
+    ]
+
+    groups = detect_groups(build_company_graph(affiliations))
+
+    # 依 Unicode code point 排序（sorted() 對中文字元的預設行為），不是數字順序
+    # 「甲乙丙丁戊」——只要求穩定，不要求貼合人類讀法。已重跑多次確認同一順序。
+    assert list(groups) == ["丁公司", "丙公司", "乙公司", "戊公司", "甲公司"]
+
+
 def test_group_exposure_sums_by_group():
     """集團曝險為群組內各公司授信餘額之和。"""
     g = build_company_graph(_AFFILIATIONS)

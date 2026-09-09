@@ -13,11 +13,15 @@ describe('SCREENING_SNAPSHOT 形狀驗證', () => {
     expect(SCREENING_SNAPSHOT.amount_usdt).toBe(500000)
   })
 
-  it('三個分數與決策與演示口白一致（0.73 / 0.33 / 0.60 → block）', () => {
-    expect(SCREENING_SNAPSHOT.risk_score).toBe(0.7307)
-    expect(SCREENING_SNAPSHOT.self_score).toBe(0.3268)
+  // 此處刻意不是 block：劇本中的出金地址本身不命中任何圖樣、也不在黑名單上，
+  // self_score 僅 0.149，全部的指控來自二階關聯鏈。先前之所以達到 block，是因為
+  // 社群風險比被固定成 1.0 而灌高了自身分數；該缺陷修正後，對一個自身無結構異常
+  // 的地址給予 EDD 而非硬擋，才是站得住腳的風險立場。門檻未動。
+  it('三個分數與決策與演示口白一致（0.66 / 0.15 / 0.60 → review／EDD）', () => {
+    expect(SCREENING_SNAPSHOT.risk_score).toBe(0.6596)
+    expect(SCREENING_SNAPSHOT.self_score).toBe(0.149)
     expect(SCREENING_SNAPSHOT.association_score).toBe(0.6)
-    expect(SCREENING_SNAPSHOT.decision).toBe('block')
+    expect(SCREENING_SNAPSHOT.decision).toBe('review')
   })
 
   it('關聯證據鏈與圖譜節點/邊數與演示口白一致', () => {

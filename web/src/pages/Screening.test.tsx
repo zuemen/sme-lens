@@ -29,7 +29,8 @@ describe('Screening 離線快照保險網（I5）', () => {
     render(<Screening />)
     screen.getByRole('button', { name: '執行出金審查' }).click()
 
-    await waitFor(() => expect(screen.getByText('0.73')).toBeDefined())
+    // 0.66：社群風險比缺陷修正後的正確值（原為 0.73，見 snapshot.test.ts 的說明）。
+    await waitFor(() => expect(screen.getByText('0.66')).toBeDefined())
     expect(screen.getByText(/離線快照/)).toBeDefined()
   })
 
@@ -38,7 +39,7 @@ describe('Screening 離線快照保險網（I5）', () => {
     render(<Screening />)
     screen.getByRole('button', { name: '執行出金審查' }).click()
 
-    await waitFor(() => expect(screen.getByText('0.73')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('0.66')).toBeDefined())
     expect(screen.getByText(/離線快照/)).toBeDefined()
   })
 
@@ -49,6 +50,6 @@ describe('Screening 離線快照保險網（I5）', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
     expect(screen.queryByText(/離線快照/)).toBeNull()
-    expect(screen.queryByText('0.73')).toBeNull()
+    expect(screen.queryByText('0.66')).toBeNull()
   })
 })

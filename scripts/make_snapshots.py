@@ -1,4 +1,8 @@
-"""產生前端離線快照：現場斷網或後端冷啟動逾時時，demo 仍能演完。
+"""產生前端離線快照（credit / group / screening）：現場斷網或後端冷啟動逾時時，demo 仍能演完。
+
+三份快照都由本腳本對正在跑的後端發出與前端 demo 完全相同的請求並落盤，
+確保它們可重現、不會與後端行為漂移——這正是 screening 快照過去手工產生、
+未納入本腳本時發生過的問題（見 web/e2e/screening.spec.ts 的說明）。
 
 Windows 下務必以 PYTHONIOENCODING=utf-8 執行，否則 stdout 會弄壞中文。
 `smelens` 未以 editable 方式裝進 .venv，故需一併指定 PYTHONPATH。
@@ -54,7 +58,19 @@ def main() -> None:
     (OUT_DIR / "group-snapshot.json").write_text(
         json.dumps(group.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    print("wrote credit-snapshot.json / group-snapshot.json")
+
+    # 與 Screening.tsx 的 postScreen('TOtcOut01', 500000) 完全一致的請求
+    # （含 postScreen 內固定帶上的 request_id），避免快照與畫面實際打的請求脫鉤。
+    screening = client.post(
+        "/screen",
+        json={"target": "TOtcOut01", "amount_usdt": 500000.0, "request_id": "DEMO-2026-001"},
+    )
+    screening.raise_for_status()
+    (OUT_DIR / "screening-snapshot.json").write_text(
+        json.dumps(screening.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+    print("wrote credit-snapshot.json / group-snapshot.json / screening-snapshot.json")
 
 
 if __name__ == "__main__":

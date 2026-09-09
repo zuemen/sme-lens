@@ -78,11 +78,16 @@ def detect_groups(company_graph: nx.Graph) -> dict[str, int]:
     怕的漏網。社群偵測適合找「結構相似的群」，歸戶要的是「連得到就算」。
 
     集團編號依元件內字典序最小的公司名排序後給定，確保結果穩定可重現。
+
+    元件內部也要排序後再指派：nx.connected_components 回傳的是 set，其迭代順序
+    受行程的 hash 隨機化影響。歸戶結果的「值」不受影響，但回應中鍵的順序會在不同
+    請求之間跳動，而前端是照這個順序渲染歸戶結果表的——同一筆查詢重跑一次表格就
+    換個排列，現場看起來像資料變了。
     """
     groups: dict[str, int] = {}
     components = sorted(nx.connected_components(company_graph), key=lambda c: sorted(c)[0])
     for index, component in enumerate(components):
-        for company in component:
+        for company in sorted(component):
             groups[company] = index
     return groups
 
