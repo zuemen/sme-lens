@@ -25,6 +25,13 @@ def detect_cycle_trade(
     營收，或關係人之間資金迴流以粉飾財報周轉率。
 
     環上**最小**金額須 >= min_amount 才計入，避免零星小額往來構成的環誤報。
+    金額先以 max(amount, 0.0) 夾到 0：折讓、退貨與沖銷在真實流水中必然出現，
+    負數邊代表沖銷而非負金額，不夾住會讓 min_amount 門檻對這種環永遠失效。
+    缺 `amount` 屬性的邊視為**金額未知**而非金額為 0——兩者在證據文件裡是
+    截然不同的陳述：「最小金額 0」是一筆觀測到的零元交易，「金額未知」是
+    根本沒有金額資料，把後者印成前者等於把資料缺席偽裝成觀察結果。環上若
+    有任何一邊金額未知，min_amount 門檻僅以已知金額判斷（無從對未知金額
+    設門檻），且敘事改用「環上最小金額未知（部分邊缺金額資料）」。
 
     `nodes` 保留環的**實際流向順序**（旋轉至 center 起始以確保結果穩定），
     因為授信意見書與圖譜著色要能重建「錢是照哪條路繞回來的」——那條路徑
@@ -39,12 +46,16 @@ def detect_cycle_trade(
     for cycle in nx.simple_cycles(g, length_bound=max_len):
         if len(cycle) < 2:  # 自環非交易環
             continue
-        amounts = [
-            float(g[cycle[i]][cycle[(i + 1) % len(cycle)]].get("amount", 0.0))
+        raw_amounts = [
+            g[cycle[i]][cycle[(i + 1) % len(cycle)]].get("amount")
             for i in range(len(cycle))
         ]
-        if min(amounts) < min_amount:
+        known_amounts = [max(float(a), 0.0) for a in raw_amounts if a is not None]
+        if known_amounts and min(known_amounts) < min_amount:
             continue
+        min_amount_zh = (
+            f"{min(known_amounts):,.0f}" if known_amounts else "未知（部分邊缺金額資料）"
+        )
         center = min(cycle, key=str)
         start = cycle.index(center)
         ordered = cycle[start:] + cycle[:start]  # 旋轉至 center 起始，流向不變
@@ -56,7 +67,7 @@ def detect_cycle_trade(
                 nodes=ordered,
                 description_zh=(
                     f"節點 {center} 位於長度 {len(cycle)} 的封閉資金環"
-                    f"（{path_zh}，環上最小金額 {min(amounts):,.0f}），"
+                    f"（{path_zh}，環上最小金額 {min_amount_zh}），"
                     "符合循環交易／資金迴流圖樣。"
                 ),
             )
@@ -75,11 +86,20 @@ def detect_shell_intermediary(
 
     對手方數以進、出**度數**衡量（非金額），任一方向超過 max_counterparties
     即視為集散樞紐而非空殼。
+
+    流入、流出金額皆先以 max(amount, 0.0) 夾到 0 才加總：折讓、退貨與沖銷
+    在真實流水中必然出現，負數邊代表沖銷而非負向的流入／流出，若不夾住，
+    一筆大額沖銷可能把某方向的加總拉成負數而被 `<= 0` 判斷誤判為「無流入
+    ／流出」，讓真正的空殼過水節點被漏判。
     """
     hits: list[MotifHit] = []
     for node in g.nodes():
-        in_amount = sum(float(d.get("amount", 0.0)) for _, _, d in g.in_edges(node, data=True))
-        out_amount = sum(float(d.get("amount", 0.0)) for _, _, d in g.out_edges(node, data=True))
+        in_amount = sum(
+            max(float(d.get("amount", 0.0)), 0.0) for _, _, d in g.in_edges(node, data=True)
+        )
+        out_amount = sum(
+            max(float(d.get("amount", 0.0)), 0.0) for _, _, d in g.out_edges(node, data=True)
+        )
         if in_amount <= 0 or out_amount <= 0:
             continue
         in_degree = g.in_degree(node)
@@ -114,7 +134,10 @@ def detect_buyer_concentration(
     斷裂。這是中小企業授信最典型的隱藏風險，卻**不會顯現在財報的獲利數字
     上**——帳面毛利可能很漂亮，風險藏在客戶結構裡。
 
-    收入定義為 in-edges 金額總和（邊方向 u → v 表示 u 付款給 v）。
+    收入定義為 in-edges 金額總和（邊方向 u → v 表示 u 付款給 v）。負數邊
+    先以 max(amount, 0.0) 夾到 0 才計入：折讓、退貨與沖銷在真實流水中必然
+    出現，負數邊代表沖銷而非負收入，若原樣加總會讓「單一買方佔比」超過
+    100%，在授信意見書裡寫出算術上不可能的句子。
     營收低於 min_revenue 者跳過，避免對微型往來過度反應。
 
     **只觀察到一個買方時一律不計**（min_buyers 預設 2）：集中度是分布的性質，
@@ -126,7 +149,7 @@ def detect_buyer_concentration(
     for node in g.nodes():
         by_buyer: dict[object, float] = {}
         for u, _, d in g.in_edges(node, data=True):
-            by_buyer[u] = by_buyer.get(u, 0.0) + float(d.get("amount", 0.0))
+            by_buyer[u] = by_buyer.get(u, 0.0) + max(float(d.get("amount", 0.0)), 0.0)
         revenue = sum(by_buyer.values())
         if revenue <= 0 or revenue < min_revenue or len(by_buyer) < min_buyers:
             continue

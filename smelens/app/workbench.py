@@ -1,4 +1,4 @@
-"""鏈鏡 ChainLens Streamlit Demo 工作台。
+"""企鏡 SME Lens Streamlit Demo 工作台。
 
 兩種模式：
 1. 出金審查 Demo —— 提案書招牌情境「50 萬 USDT 出金攔阻」一鍵展演：
@@ -214,8 +214,8 @@ def render_workbench() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="鏈鏡 ChainLens", layout="wide")
-    st.title("鏈鏡 ChainLens — 詐騙金流偵測工作台")
+    st.set_page_config(page_title="企鏡 SME Lens", layout="wide")
+    st.title("企鏡 SME Lens — 詐騙金流偵測工作台")
     st.caption("SNA + 圖樣規則 + 可解釋證據｜研究用途，非投資或法律建議")
 
     mode = st.radio(

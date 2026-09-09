@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+import smelens.api.main as main_module
+from smelens.api import serialize
 from smelens.api.main import app
 from smelens.data.sme_scenario import CREDIT_APPLICANT, NORMAL_APPLICANT
 
@@ -107,11 +109,75 @@ def test_group_endpoint_reports_unattributed_exposure():
     assert sum(body["exposures"].values()) == 30_000_000
 
 
+def test_group_endpoint_bounds_hidden_links_payload():
+    """500 家公司共用一名董事是合法名冊，但完整隱性關聯有 124,750 筆。
+
+    回應必須被截斷在合理大小內，同時誠實回報 hidden_links_total 與
+    truncated，不得讓回應看起來只找到這麼多筆。
+    """
+    response = client.post(
+        "/group",
+        json={
+            "affiliations": [
+                {"company": f"C{i}", "person": "共用董事"} for i in range(500)
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["hidden_links"]) == 200
+    assert body["hidden_links_total"] == 124_750
+    assert body["truncated"] is True
+    # 回應本體應遠低於未截斷時的 16MB+。
+    assert len(response.content) < 1_000_000
+
+
+def test_group_endpoint_reports_untruncated_when_small():
+    """未超過截斷上限時，truncated 應誠實回報 False，total 與清單長度一致。"""
+    response = client.post(
+        "/group",
+        json={
+            "affiliations": [
+                {"company": "泰昇精密", "person": "陳大明", "role": "董事長"},
+                {"company": "泰昇投資", "person": "陳大明", "role": "董事"},
+                {"company": "昇泰貿易", "person": "王秀英", "role": "董事"},
+                {"company": "泰昇投資", "person": "王秀英", "role": "監察人"},
+            ],
+        },
+    )
+
+    body = response.json()
+    assert body["truncated"] is False
+    assert body["hidden_links_total"] == len(body["hidden_links"])
+
+
 def test_group_endpoint_rejects_empty_affiliations():
     """空名冊無從歸戶，應回 400。"""
     response = client.post("/group", json={"affiliations": []})
 
     assert response.status_code == 400
+
+
+def test_credit_endpoint_keeps_target_when_graph_truncated(monkeypatch):
+    """授信對象即使分數不夠高，也不得被截斷邏輯排除在附圖之外。
+
+    劇本圖本身節點數低於 MAX_GRAPH_NODES，故以極小的 limit 強制觸發截斷，
+    驗證 /credit 傳入的 keep={req.target} 生效。
+    """
+    monkeypatch.setattr(
+        main_module,
+        "graph_to_json",
+        lambda *args, **kwargs: serialize.graph_to_json(*args, **{**kwargs, "limit": 2}),
+    )
+
+    response = client.post("/credit", json={"target": CREDIT_APPLICANT})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["graph"]["meta"]["truncated"] is True
+    ids = {n["id"] for n in body["graph"]["nodes"]}
+    assert CREDIT_APPLICANT in ids
 
 
 def test_credit_graph_labels_use_frontend_vocabulary():

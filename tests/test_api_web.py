@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import smelens.api.main as main_module
+from smelens.api import serialize
 from smelens.api.main import app
 
 client = TestClient(app)
@@ -48,6 +50,29 @@ def test_screen_returns_graph_and_highlight_path() -> None:
     assert body["graph"]["meta"]["node_count"] == 53
     assert body["graph"]["meta"]["edge_count"] == 63
     assert body["highlight_path"] == ["TAggregator01", "TMule03", "TOtcOut01"]
+
+
+def test_screen_keeps_target_and_highlight_path_when_graph_truncated(monkeypatch) -> None:
+    """出金目標與 highlight_path 上的節點即使分數不夠高，也不得被截斷丟掉。
+
+    否則回應會帶一條指向圖裡不存在的節點的高亮路徑，前端連 EDD 展演的招牌
+    路徑都畫不出來。劇本圖節點數低於 MAX_GRAPH_NODES，以極小 limit 強制
+    觸發截斷。
+    """
+    monkeypatch.setattr(
+        main_module,
+        "graph_to_json",
+        lambda *args, **kwargs: serialize.graph_to_json(*args, **{**kwargs, "limit": 2}),
+    )
+
+    response = client.post("/screen", json={"target": "TOtcOut01", "amount_usdt": 500000.0})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["graph"]["meta"]["truncated"] is True
+    ids = {n["id"] for n in body["graph"]["nodes"]}
+    assert set(body["highlight_path"]) <= ids
+    assert "TOtcOut01" in ids
 
 
 def test_screen_highlight_path_empty_when_no_associations() -> None:

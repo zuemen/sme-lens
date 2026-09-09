@@ -102,6 +102,45 @@ def test_truncated_graph_drops_edges_to_removed_nodes() -> None:
     assert payload["meta"]["edge_count"] == len(payload["edges"])
 
 
+def test_truncation_keeps_required_node_even_when_low_score() -> None:
+    """keep 中的節點無論分數高低都不得被截斷邏輯丟掉。
+
+    修復前：`/credit` 的授信對象、`/screen` 的出金目標與 highlight_path
+    節點都可能因分數不夠高而被排除在截斷後的圖之外，產生一份談 A 公司的
+    文件卻附上一張沒有 A 的圖。
+    """
+    g = scenario.load_withdrawal_scenario()
+    sna_df, evidences, centers = _payload_for(g)
+    target = scenario.WITHDRAWAL_TARGET
+
+    without_keep = graph_to_json(g, evidences, sna_df, motif_centers=centers, limit=3)
+    ids_without = {n["id"] for n in without_keep["nodes"]}
+    assert target not in ids_without, "本測試前提：小 limit 下若不指定 keep，目標節點會被排除"
+
+    with_keep = graph_to_json(
+        g, evidences, sna_df, motif_centers=centers, limit=3, keep={target}
+    )
+    ids_with = {n["id"] for n in with_keep["nodes"]}
+    assert target in ids_with
+    # keep 節點也不得留下指向已移除節點的孤兒邊。
+    for edge in with_keep["edges"]:
+        assert edge["source"] in ids_with
+        assert edge["target"] in ids_with
+
+
+def test_truncation_keeps_multiple_required_nodes_even_beyond_limit() -> None:
+    """keep 節點數超過 limit 時，limit 讓步，全部保留而非任意丟棄其中幾個。"""
+    g = scenario.load_withdrawal_scenario()
+    sna_df, evidences, centers = _payload_for(g)
+    keep_nodes = set(list(g.nodes())[:5])
+
+    payload = graph_to_json(g, evidences, sna_df, motif_centers=centers, limit=3, keep=keep_nodes)
+
+    ids = {n["id"] for n in payload["nodes"]}
+    assert keep_nodes <= ids
+    assert len(ids) >= len(keep_nodes)
+
+
 def test_graph_under_limit_is_not_marked_truncated() -> None:
     g = scenario.load_withdrawal_scenario()
     sna_df, evidences, centers = _payload_for(g)

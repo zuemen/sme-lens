@@ -79,10 +79,15 @@ def counterparty_diversity(g: nx.DiGraph, node: Any) -> float:
     單一買方 → 0；n 個買方平均分攤 → 1。無收入者回傳 0。
     企金意義：這是「客戶集中度」的連續版本，比二元的圖樣命中更適合放進
     信用分計算——集中度是程度問題，不是有無問題。
+
+    金額先以 max(amount, 0.0) 夾到 0 才累加：折讓、退貨與沖銷在真實流水中
+    必然出現，負數邊代表沖銷而非負收入。夾住之後熵的定義域自然落在
+    [0, 1]，但保險起見回傳前仍明確 clamp 一次——這是本函式簽章已對外
+    承諾的區間，不該因為未預期的浮點誤差或未來的計算路徑改動而破功。
     """
     amounts: dict[Any, float] = {}
     for u, _, data in g.in_edges(node, data=True):
-        amounts[u] = amounts.get(u, 0.0) + float(data.get("amount", 0.0))
+        amounts[u] = amounts.get(u, 0.0) + max(float(data.get("amount", 0.0)), 0.0)
     total = sum(amounts.values())
     if total <= 0:
         return 0.0
@@ -90,11 +95,12 @@ def counterparty_diversity(g: nx.DiGraph, node: Any) -> float:
     if len(shares) < 2:
         return 0.0
     entropy = -sum(share * math.log(share) for share in shares)
-    return round(entropy / math.log(len(shares)), 4)
+    diversity = entropy / math.log(len(shares))
+    return round(min(max(diversity, 0.0), 1.0), 4)
 
 
-def network_credit(g: nx.DiGraph, node: Any, sna_df: pd.DataFrame) -> float:
-    """網絡信用分（0–1，愈高信用愈佳）。
+def network_credit(g: nx.DiGraph, node: Any, sna_df: pd.DataFrame) -> float | None:
+    """網絡信用分（0–1，愈高信用愈佳）；無收入者回傳 None（未評估）。
 
     = 0.5 × 結構中心性百分位均值 + 0.5 × 交易對手多樣性
 
@@ -105,19 +111,22 @@ def network_credit(g: nx.DiGraph, node: Any, sna_df: pd.DataFrame) -> float:
     百分位採**嚴格小於**：真實圖上多數節點的 betweenness 為 0、degree 為 1，
     若用小於等於，這批節點會被算進第 85+ 百分位而虛胖成「結構核心」。
 
-    無收入者（in-degree 為 0，純買方／資金源頭）沒有「買方結構」可言，多樣性
-    未定義而非 0，故只取結構中心性百分位，不併入對手多樣性。
+    無收入者（in-degree 為 0，純買方／資金源頭）沒有「買方結構」可言，網絡
+    信用分**不可評估**，故回傳 None 而非只取結構中心性、更不是 0。這與
+    `counterparty_diversity` 已經採用的立場一致——未定義不是零。早期實作曾
+    只取結構中心性當替代值，但小圖上的中心性本身就是雜訊：核心買方（圖中
+    最大、最健康的節點，只被觀察到付款、從未收款）會因此得到全圖最低的
+    網絡信用分，排在空殼中介與問題申請人之後——這正是本分數存在的理由要
+    反過來咬自己。呼叫端（`generate_credit_opinion`）在 None 時須改用中性
+    中點，而非把「無法評估」當「最差」處理。
     """
+    if g.in_degree(node) == 0:
+        return None
     percentiles = {
         column: float((sna_df[column] < sna_df.at[node, column]).mean())
         for column in sna_df.columns
     }
     centrality = sum(percentiles.values()) / len(percentiles)
-    if g.in_degree(node) == 0:
-        # 無收入者（純買方／資金源頭）沒有「買方結構」可言，多樣性是未定義而非 0。
-        # 以 0 併入平均會把這類節點一律壓成低信用——那是資料缺席，不是信用不佳，
-        # 且與「讓沒有漂亮財報的好公司被看見」的主張背道而馳。
-        return round(centrality, 4)
     return round(0.5 * centrality + 0.5 * counterparty_diversity(g, node), 4)
 
 
@@ -164,15 +173,33 @@ def generate_credit_opinion(
     # 更難用巧合解釋，故直接給滿分。這條規則對授信人員是可以講清楚的。
     flag_kinds = len({hit.motif for hit in relevant})
     motif_strength = 0.0 if flag_kinds == 0 else (0.55 if flag_kinds == 1 else 1.0)
-    rule_score = 0.7 * motif_strength + 0.2 * (1.0 - credit) + 0.1 * risk_ratio
+    # 網絡信用分未評估（無收入紀錄）時，結構面以中性中點 0.5 計入——不可評估
+    # 不等於最差，把 credit=None 當成 credit=0（0.2×(1-0)=0.2，滿分懲罰）
+    # 會讓核心買方這種只被觀察到付款、從未收款的健康節點得到最重的結構扣分。
+    structure_term = 0.5 if credit is None else (1.0 - credit)
+    rule_score = 0.7 * motif_strength + 0.2 * structure_term + 0.1 * risk_ratio
     score = 0.5 * model_score + 0.5 * rule_score if model_score is not None else rule_score
     score = min(max(score, 0.0), 1.0)
     label = "watch" if score >= 0.7 else "caution" if score >= 0.4 else "normal"
 
+    credit_zh = "未評估" if credit is None else f"{credit:.2f}"
     narrative: list[str] = [
-        f"企業 {node} 網絡信用分 {credit:.2f}、授信關注分數 {score:.2f}"
+        f"企業 {node} 網絡信用分 {credit_zh}、授信關注分數 {score:.2f}"
         f"（{_LABEL_ZH[label]}）。"
     ]
+    if credit is None:
+        narrative.append(
+            "本公司於本圖中僅觀察到付款、無收入紀錄，網絡信用分未評估"
+            "（結構面以中性值計入關注分數，不視為最差）。"
+        )
+    else:
+        # 網絡信用分半數權重來自結構中心性，narrative 需點出取用的是哪個指標、
+        # 落在第幾百分位——否則這一半權重對授信人員而言就是黑箱數字。
+        top_feature = max(percentiles, key=lambda c: percentiles[c])
+        narrative.append(
+            f"結構中心性以 {top_feature} 指標最高，位居全圖第 "
+            f"{percentiles[top_feature]:.0f} 百分位（此為網絡信用分半數權重來源）。"
+        )
     if relevant:
         # 逐句去掉自帶的句號再以分號串接，最後統一補一個句號——直接串會產生「。；」。
         sentences = "；".join(_motif_sentence(node, hit) for hit in relevant)
@@ -186,6 +213,11 @@ def generate_credit_opinion(
             f"交易對手多樣性 {diversity:.2f}"
             f"（{'買方高度集中' if diversity < 0.5 else '買方結構分散'}）。"
         )
+    # 社群風險比是關注分數 10% 權重的來源，但標籤是圖樣命中中心的代理標註
+    # （非真值），故措辭只能陳述這個比例實際上是什麼——該社群裡有多少比例
+    # 的成員是圖樣命中中心，不得寫成「已知非法佔比」這種暗示真值標註存在
+    # 的說法（docs/TODO.md P1 已記錄防詐分支的同一措辭不可信，此處不重蹈）。
+    narrative.append(f"所屬社群 #{community} 中有 {risk_ratio:.0%} 的成員為企金風險圖樣命中中心。")
     if group_id is not None:
         exposure_text = (
             f"，該集團授信曝險合計 {group_exposure_twd:,.0f} 元"

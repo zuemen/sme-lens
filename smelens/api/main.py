@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from smelens.api.serialize import graph_to_json, sna_table
 from smelens.credit.group import (
+    DEFAULT_HIDDEN_LINKS_LIMIT,
     Affiliation,
     build_company_graph,
     detect_groups,
@@ -200,15 +201,18 @@ def screen(req: ScreenRequest, x_api_key: str | None = Header(default=None)) -> 
     result = screen_withdrawal(
         g, req.target, req.amount_usdt, request_id=req.request_id, pipeline=pipeline
     )
+    associations = result["associations"]
+    highlight_path = associations[0]["path"] if associations else []
+    result["highlight_path"] = [str(node) for node in highlight_path]
+    # keep：出金目標與其 highlight_path 上的節點無論分數高低都不得被截斷邏輯
+    # 丟掉——否則回應會帶著一條引用不存在節點的高亮路徑，前端渲染不出來，
+    # 而 highlight_path 正是這支端點的招牌展演。
     result["graph"] = graph_to_json(
         g,
         _evidences_for(g, sna_df, partition, risk_ratios, motif_hits),
         sna_df,
         motif_centers={hit.center for hit in motif_hits},
-    )
-    associations = result["associations"]
-    result["highlight_path"] = (
-        [str(node) for node in associations[0]["path"]] if associations else []
+        keep={req.target, *highlight_path},
     )
     return result
 
@@ -254,8 +258,18 @@ def _build_graph(req: ScoreRequest) -> tuple[nx.DiGraph, Any]:
 
     if mode == "example":
         g = tron.load_example_graph()
-        target = req.address if req.address in g else g.graph["center"]
-        return g, target
+        if req.address is not None:
+            # 呼叫端明確指定了地址：不在範例圖中就必須誠實回 404，絕不可靜默改答
+            # 另一個地址的分數——tron 分支在同樣情境下已是這樣做，example 模式
+            # 沒有理由是唯一說謊的分支。
+            if req.address not in g:
+                raise HTTPException(
+                    status_code=404, detail=f"地址 {req.address} 不在範例圖中"
+                )
+            return g, req.address
+        # 未提供地址時才回退到範例圖中心，這是「請給我一個範例」的請求，不是
+        # 「請回答關於這個地址的問題」。
+        return g, g.graph["center"]
 
     if mode == "tron":
         if not req.address:
@@ -413,6 +427,9 @@ def credit(req: CreditRequest, x_api_key: str | None = Header(default=None)) -> 
         sna_df,
         motif_centers={hit.center for hit in motif_hits},
         role_zh=sme_scenario.ROLE_ZH,
+        # keep：授信對象無論分數高低都不得被截斷邏輯丟掉——否則會出現一份談
+        # A 公司的授信意見書，附圖裡卻連 A 都找不到。
+        keep={req.target},
     )
     return opinion
 
@@ -434,9 +451,17 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
     unattributed = sorted(
         c for c in req.exposures if normalise_name(c) not in groups
     )
+    # hidden_links 依 weight 截斷至 DEFAULT_HIDDEN_LINKS_LIMIT 筆（見該函式 docstring：
+    # 500 家公司共用同一人可組出 12.4 萬筆候選、13MB+ 的單一回應）。截斷本身不算
+    # 隱瞞，但若不同時回報「原本有多少筆」，回應會讓人誤以為只找到這麼多——
+    # 那才是真正的低估，故一律附上 total 與 truncated 旗標。
+    all_hidden_links = hidden_links(company_graph, req.declared_groups, limit=10**9)
+    hidden_links_total = len(all_hidden_links)
     return {
         "groups": groups,
         "exposures": {str(gid): amount for gid, amount in totals.items()},
-        "hidden_links": hidden_links(company_graph, req.declared_groups),
+        "hidden_links": all_hidden_links[:DEFAULT_HIDDEN_LINKS_LIMIT],
+        "hidden_links_total": hidden_links_total,
+        "truncated": hidden_links_total > DEFAULT_HIDDEN_LINKS_LIMIT,
         "unattributed": unattributed,
     }

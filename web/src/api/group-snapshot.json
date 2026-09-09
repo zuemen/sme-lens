@@ -16,8 +16,11 @@
         "王秀英"
       ],
       "declared_group_a": "昇泰集團",
-      "declared_group_b": "泰昇集團"
+      "declared_group_b": "泰昇集團",
+      "weight": 1
     }
   ],
+  "hidden_links_total": 1,
+  "truncated": false,
   "unattributed": []
 }

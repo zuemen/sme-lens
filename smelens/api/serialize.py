@@ -24,9 +24,21 @@ MAX_GRAPH_NODES = 300
 
 
 def _retained_nodes(
-    g: nx.DiGraph, evidences: dict[Any, dict[str, Any]], limit: int
+    g: nx.DiGraph,
+    evidences: dict[Any, dict[str, Any]],
+    limit: int,
+    *,
+    keep: set[Any] | None = None,
 ) -> list[Any]:
-    """超過上限時只保留風險分數最高的 limit 個節點。"""
+    """超過上限時保留風險分數最高的節點，但 keep 中的節點無論分數一律保留。
+
+    keep 用來確保「這份回應是關於誰的」不會被截斷邏輯意外丟掉——例如
+    `/credit` 的授信對象，或 `/screen` 的出金目標與其 highlight_path。純以
+    分數排序截斷完全可能把這些節點排在 limit 之外：分數高不代表就是使用者
+    問的那家公司。若 keep 本身就超過 limit，limit 讓步——保留目標永遠優先
+    於維持精確的節點數上限，回應會誠實標示比 limit 更大的 node_count。
+    """
+    keep = {node for node in (keep or set()) if node in g}
     if g.number_of_nodes() <= limit:
         return list(g.nodes())
     ranked = sorted(
@@ -34,7 +46,12 @@ def _retained_nodes(
         key=lambda node: (evidences.get(node, {}).get("score", 0.0), str(node)),
         reverse=True,
     )
-    return ranked[:limit]
+    remaining_slots = max(limit - len(keep), 0)
+    fill = [node for node in ranked if node not in keep][:remaining_slots]
+    # keep 節點置前：下游（例如高亮路徑重建）不應假設順序，但穩定的置前順序
+    # 讓除錯時更容易在輸出裡一眼找到目標節點。
+    ordered_keep = [node for node in ranked if node in keep]
+    return ordered_keep + fill
 
 
 def graph_to_json(
@@ -46,6 +63,7 @@ def graph_to_json(
     degraded: bool = False,
     limit: int = MAX_GRAPH_NODES,
     role_zh: Mapping[str, str] | None = None,
+    keep: set[Any] | None = None,
 ) -> dict[str, Any]:
     """圖 + 全節點證據 → 前端圖譜 JSON。
 
@@ -55,12 +73,15 @@ def graph_to_json(
     節點數超過 limit 時依風險分數截斷，並在 meta 標示 truncated 與原始節點數，
     讓前端能誠實告知使用者看到的不是全圖。
 
+    keep：無論分數高低都必須留下的節點集合（例如本次查詢的對象、高亮路徑
+    上的節點）。截斷是為了控制回應大小，不該連「這份回應是關於誰」都截掉。
+
     role_zh：角色代碼 → 中文名稱的對照表。預設為 AML 劇本的 ROLE_ZH；企金
     劇本圖須傳入 sme_scenario.ROLE_ZH，否則角色會回退成英文鍵。
     """
     role_names = ROLE_ZH if role_zh is None else role_zh
     pagerank = sna_df["pagerank"].to_dict() if not sna_df.empty else {}
-    retained = _retained_nodes(g, evidences, limit)
+    retained = _retained_nodes(g, evidences, limit, keep=keep)
     retained_set = set(retained)
 
     nodes = []

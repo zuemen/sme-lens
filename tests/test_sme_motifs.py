@@ -146,6 +146,59 @@ def test_detect_all_sme_combines_three_motifs():
     assert "buyer_concentration" in motifs
 
 
+def test_detect_buyer_concentration_ratio_never_exceeds_100pct_with_negative_edges():
+    """折讓／退貨／沖銷會產生負數邊，但回報的集中度不得超過 100%。
+
+    修復前：B1 付 -1000（沖銷）、B2 付 3000，原始加總營收僅 2000，
+    B2 一家就佔 150%——算術上不可能的百分比。
+    """
+    g = nx.DiGraph()
+    g.add_edge("B1", "T", amount=-1000.0)
+    g.add_edge("B2", "T", amount=3000.0)
+
+    hits = detect_buyer_concentration(g, min_ratio=0.0)
+
+    assert len(hits) == 1
+    assert "150%" not in hits[0].description_zh
+    assert "來自單一買方" in hits[0].description_zh
+
+
+def test_detect_buyer_concentration_treats_negative_edge_as_reversal_not_negative_revenue():
+    """負數邊視為沖銷，夾到 0，不倒扣既有正向營收。"""
+    g = nx.DiGraph()
+    g.add_edge("B1", "T", amount=5000.0)
+    g.add_edge("B2", "T", amount=-1000.0)
+
+    hits = detect_buyer_concentration(g, min_ratio=0.0)
+
+    # B2 的沖銷夾到 0 後，B1 為唯一有效營收來源，集中度應為 100%（非 >100%）。
+    assert hits[0].description_zh.count("100%") == 1
+
+
+def test_detect_cycle_trade_missing_amount_reports_unknown_not_zero():
+    """缺 amount 屬性的邊應誠實標示「金額未知」，不得偽裝成觀測到的 0 元。"""
+    g = nx.DiGraph()
+    g.add_edge("A", "B")
+    g.add_edge("B", "C")
+    g.add_edge("C", "A")
+
+    hits = detect_cycle_trade(g, min_amount=0.0)
+
+    assert len(hits) == 1
+    assert "環上最小金額 0" not in hits[0].description_zh
+    assert "未知" in hits[0].description_zh
+
+
+def test_detect_cycle_trade_negative_edge_clamped_to_zero_for_threshold():
+    """環上有沖銷（負數）邊時，以 0 計入 min_amount 門檻判斷，而非負值。"""
+    g = nx.DiGraph()
+    g.add_edge("A", "B", amount=-500.0)
+    g.add_edge("B", "A", amount=1_000_000.0)
+
+    # min_amount=0：夾到 0 後仍滿足 >= 0，應命中。
+    assert len(detect_cycle_trade(g, min_amount=0.0)) == 1
+
+
 def test_detect_buyer_concentration_ignores_single_observed_buyer():
     """只觀察到一個買方時，100% 集中是圖資不完整的假象，不是客戶結構風險。
 

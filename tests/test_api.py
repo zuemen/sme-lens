@@ -16,8 +16,9 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_score_example_mode() -> None:
-    response = client.post("/score", json={"address": "TDemoAddress", "mode": "example"})
+def test_score_example_mode_falls_back_to_center_when_no_address_given() -> None:
+    """未提供 address 時才回退到範例圖中心——這是唯一合法的回退情境。"""
+    response = client.post("/score", json={"tx_id": "1", "mode": "example"})
     assert response.status_code == 200
     body = response.json()
     assert 0.0 <= body["risk_score"] <= 1.0
@@ -25,6 +26,18 @@ def test_score_example_mode() -> None:
     assert body["evidence"]
     assert body["evidence"][0]["narrative_zh"]
     assert body["evidence"][0]["motif_hits"]  # 範例圖中心必命中圖樣
+
+
+def test_score_example_mode_unknown_address_returns_404() -> None:
+    """指定的地址不在範例圖中時必須誠實回 404，不得靜默改答另一個地址的分數。
+
+    修復前：呼叫端問 TDemoAddress，系統卻回傳範例圖中心
+    TScamCollector001（risk_score 0.7166、label high）的評分，回應中沒有
+    任何欄位揭露這個替換。
+    """
+    response = client.post("/score", json={"address": "TDemoAddress", "mode": "example"})
+    assert response.status_code == 404
+    assert "TDemoAddress" in response.json()["detail"]
 
 
 def test_score_known_node_in_example_graph() -> None:
@@ -77,7 +90,7 @@ def test_tron_fetch_failure_returns_502_not_example_graph(
 
 def test_api_key_enforced_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SMELENS_API_KEY", "secret-key")
-    body = {"address": "TDemoAddress", "mode": "example"}
+    body = {"address": "TShopA", "mode": "example"}
     assert client.post("/score", json=body).status_code == 401
     ok = client.post("/score", json=body, headers={"X-API-Key": "secret-key"})
     assert ok.status_code == 200

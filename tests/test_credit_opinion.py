@@ -42,6 +42,44 @@ def test_counterparty_diversity_no_revenue_is_zero():
     assert counterparty_diversity(g, "廠商") == 0.0
 
 
+def test_counterparty_diversity_negative_edge_stays_in_unit_interval():
+    """負數邊（折讓／退貨／沖銷）不得把多樣性推出 [0, 1] 區間。
+
+    修復前：B1 5000、B2 5000、B3 -9000 會算出 -23.2193，違反本函式
+    docstring 承諾的 0–1 值域。
+    """
+    g = nx.DiGraph()
+    g.add_edge("B1", "T", amount=5000.0)
+    g.add_edge("B2", "T", amount=5000.0)
+    g.add_edge("B3", "T", amount=-9000.0)
+
+    diversity = counterparty_diversity(g, "T")
+
+    assert 0.0 <= diversity <= 1.0
+
+
+def test_counterparty_diversity_zero_amount_edge_stays_in_unit_interval():
+    """金額為 0 的邊不應造成除以零或超出值域。"""
+    g = nx.DiGraph()
+    g.add_edge("B1", "T", amount=0.0)
+    g.add_edge("B2", "T", amount=1000.0)
+
+    diversity = counterparty_diversity(g, "T")
+
+    assert 0.0 <= diversity <= 1.0
+
+
+def test_counterparty_diversity_missing_amount_stays_in_unit_interval():
+    """缺 amount 屬性的邊（預設 0.0）不應造成超出值域。"""
+    g = nx.DiGraph()
+    g.add_edge("B1", "T")
+    g.add_edge("B2", "T", amount=1000.0)
+
+    diversity = counterparty_diversity(g, "T")
+
+    assert 0.0 <= diversity <= 1.0
+
+
 def test_network_credit_prefers_diversified_company():
     """對照組買方分散，網絡信用分應高於買方集中的申請人。"""
     g = load_supply_chain_scenario()
@@ -50,6 +88,76 @@ def test_network_credit_prefers_diversified_company():
     assert network_credit(g, NORMAL_APPLICANT, sna_df) > network_credit(
         g, CREDIT_APPLICANT, sna_df
     )
+
+
+def test_network_credit_is_none_for_zero_in_degree_node():
+    """無收入紀錄（純買方，in-degree 為 0）的節點網絡信用分未評估，回傳 None。
+
+    修復前：這類節點只取結構中心性，回傳 0.0——把「無法評估」當成「最差」，
+    讓圖中最大、最健康的核心買方拿到全圖最低的網絡信用分。
+    """
+    g = load_supply_chain_scenario()
+    sna_df, _, _, _ = run_sme_pipeline(g)
+
+    for node in g.nodes():
+        if g.in_degree(node) == 0:
+            assert network_credit(g, node, sna_df) is None, node
+
+
+def test_credit_opinion_does_not_penalise_unassessed_network_credit_as_worst():
+    """網絡信用分未評估時，結構面以中性中點計入，不視為最重扣分。
+
+    鴻寶電子是劇本圖中最大、最健康的核心買方（只被觀察到付款、從未收款），
+    修復前 network_credit=0.0 讓它拿到與命中圖樣同等的結構懲罰
+    （0.2×(1-0)=0.2，滿分懲罰）。修復後應改為中性中點 0.2×0.5=0.1。
+    """
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    opinion = generate_credit_opinion(
+        "鴻寶電子", g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert opinion["network_credit"] is None
+    assert opinion["label"] == "normal"
+    assert "未評估" in opinion["narrative_zh"]
+
+
+def test_credit_opinion_applicant_and_control_unaffected_by_none_credit():
+    """網絡信用分未評估的變更不得影響 in-degree 非 0 的申請人／對照組分數。"""
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    applicant = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+    control = generate_credit_opinion(
+        NORMAL_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert applicant["network_credit"] is not None
+    assert applicant["attention_score"] == 0.82
+    assert control["network_credit"] is not None
+    assert control["attention_score"] == 0.0584
+
+
+def test_credit_opinion_narrative_covers_centrality_and_community_risk():
+    """網絡信用分的中心性半數權重與社群風險比 10% 權重，敘事都必須點出來源。
+
+    修復前這兩項只計入分數卻不出現在敘事裡，讀者看不到 10%~50% 權重的
+    結構依據；且社群風險比措辭不得沿用防詐分支不可信的「已知非法佔比」
+    （docs/TODO.md P1），必須陳述其真正定義：該社群中圖樣命中中心的比例。
+    """
+    g = load_supply_chain_scenario()
+    sna_df, partition, risk_ratios, motif_hits = run_sme_pipeline(g)
+
+    opinion = generate_credit_opinion(
+        CREDIT_APPLICANT, g, sna_df, partition, risk_ratios, motif_hits
+    )
+
+    assert "百分位" in opinion["narrative_zh"]
+    assert "已知非法佔比" not in opinion["narrative_zh"]
+    assert "為企金風險圖樣命中中心" in opinion["narrative_zh"]
 
 
 def test_credit_opinion_flags_applicant_with_motifs():

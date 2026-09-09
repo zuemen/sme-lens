@@ -109,7 +109,12 @@
     "motif_hits": [],
     "narrative_zh": "地址/交易 TOtcOut01 綜合風險評分 0.15（低風險）。其 in_degree 指標位於全圖第 89 百分位，結構位置偏高。所屬社群 #2 已知非法佔比 11%。"
   },
-  "str_draft_zh": "【可疑交易申報草稿】（由鏈鏡 ChainLens 自動產生，供法遵人員審閱修訂）\n\n一、交易概要\n　　案件編號：DEMO-2026-001\n　　交易類型：虛擬資產出金（TRC-20 USDT）\n　　出金目標地址：TOtcOut01\n　　申請金額：500,000 USDT\n　　系統判定：綜合風險分數 0.66，建議加強審查（EDD）。\n\n二、可疑事由\n　　目標地址與命中「集資扇入、快速分散、集散（smurfing）」圖樣之節點 TAggregator01 存在 2 階資金關聯；該地址本身未見於黑名單，惟其上游資金結構符合假投資詐騙「集資—分層—整合」洗錢路徑特徵。\n\n三、資金關聯證據鏈\n　　(1) 風險節點 TAggregator01（集資扇入、快速分散、集散（smurfing），2 階）\n　　　　路徑：TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(2) 風險節點 TSupport01（集資扇入，3 階）\n　　　　路徑：TSupport01 →（173,500 USDT，2025-10-09 09:43 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(3) 風險節點 TSupport02（集資扇入，3 階）\n　　　　路徑：TSupport02 →（166,500 USDT，2025-10-09 09:46 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(4) 風險節點 TSupport03（集資扇入，3 階）\n　　　　路徑：TSupport03 →（127,000 USDT，2025-10-09 09:49 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(5) 風險節點 TMule01（剝洋蔥鏈，4 階）\n　　　　路徑：TMule01 →（76,500 USDT，2025-10-09 10:33 UTC）TPeelA0 →（68,850 USDT，2025-10-09 10:43 UTC）TPeelA1 →（61,965 USDT，2025-10-09 10:53 UTC）TPeelA2 →（61,965 USDT，2025-10-09 11:03 UTC）TOtcOut01\n\n四、目標地址結構證據\n　　地址/交易 TOtcOut01 綜合風險評分 0.15（低風險）。其 in_degree 指標位於全圖第 89 百分位，結構位置偏高。所屬社群 #2 已知非法佔比 11%。\n\n五、建議處置\n　　加強審查（EDD）；如經人工審查確認，依洗錢防制法及虛擬資產服務法\n　　相關規定辦理可疑交易申報，並保留本報告與圖譜快照為稽核軌跡。",
+  "str_draft_zh": "【可疑交易申報草稿】（由企鏡 SME Lens 自動產生，供法遵人員審閱修訂）\n\n一、交易概要\n　　案件編號：DEMO-2026-001\n　　交易類型：虛擬資產出金（TRC-20 USDT）\n　　出金目標地址：TOtcOut01\n　　申請金額：500,000 USDT\n　　系統判定：綜合風險分數 0.66，建議加強審查（EDD）。\n\n二、可疑事由\n　　目標地址與命中「集資扇入、快速分散、集散（smurfing）」圖樣之節點 TAggregator01 存在 2 階資金關聯；該地址本身未見於黑名單，惟其上游資金結構符合假投資詐騙「集資—分層—整合」洗錢路徑特徵。\n\n三、資金關聯證據鏈\n　　(1) 風險節點 TAggregator01（集資扇入、快速分散、集散（smurfing），2 階）\n　　　　路徑：TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(2) 風險節點 TSupport01（集資扇入，3 階）\n　　　　路徑：TSupport01 →（173,500 USDT，2025-10-09 09:43 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(3) 風險節點 TSupport02（集資扇入，3 階）\n　　　　路徑：TSupport02 →（166,500 USDT，2025-10-09 09:46 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(4) 風險節點 TSupport03（集資扇入，3 階）\n　　　　路徑：TSupport03 →（127,000 USDT，2025-10-09 09:49 UTC）TAggregator01 →（86,000 USDT，2025-10-09 10:07 UTC）TMule03 →（86,000 USDT，2025-10-09 10:43 UTC）TOtcOut01\n　　(5) 風險節點 TMule01（剝洋蔥鏈，4 階）\n　　　　路徑：TMule01 →（76,500 USDT，2025-10-09 10:33 UTC）TPeelA0 →（68,850 USDT，2025-10-09 10:43 UTC）TPeelA1 →（61,965 USDT，2025-10-09 10:53 UTC）TPeelA2 →（61,965 USDT，2025-10-09 11:03 UTC）TOtcOut01\n\n四、目標地址結構證據\n　　地址/交易 TOtcOut01 綜合風險評分 0.15（低風險）。其 in_degree 指標位於全圖第 89 百分位，結構位置偏高。所屬社群 #2 已知非法佔比 11%。\n\n五、建議處置\n　　加強審查（EDD）；如經人工審查確認，依洗錢防制法及虛擬資產服務法\n　　相關規定辦理可疑交易申報，並保留本報告與圖譜快照為稽核軌跡。",
+  "highlight_path": [
+    "TAggregator01",
+    "TMule03",
+    "TOtcOut01"
+  ],
   "graph": {
     "nodes": [
       {
@@ -1031,10 +1036,5 @@
       "story_zh": "交易所用戶申請將 50 萬 USDT 提領至外部地址 TOtcOut01。該地址從未被通報，但與假投資詐騙集資主錢包存在二階資金關聯。",
       "degraded": false
     }
-  },
-  "highlight_path": [
-    "TAggregator01",
-    "TMule03",
-    "TOtcOut01"
-  ]
+  }
 }

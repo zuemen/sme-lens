@@ -103,14 +103,27 @@ def group_exposure(groups: dict[str, int], exposures: Mapping[str, float]) -> di
     return totals
 
 
+DEFAULT_HIDDEN_LINKS_LIMIT = 200
+
+
 def hidden_links(
-    company_graph: nx.Graph, declared: Mapping[str, str]
+    company_graph: nx.Graph,
+    declared: Mapping[str, str],
+    *,
+    limit: int = DEFAULT_HIDDEN_LINKS_LIMIT,
 ) -> list[dict[str, Any]]:
     """列出關係圖上存在、但客戶申報表歸屬不同集團的公司對（隱性關聯）。
 
     declared 為客戶自行申報的集團代號 {公司: 申報集團}；未申報者視為各自
     獨立的集團。回傳每筆含兩家公司、共用自然人與雙方申報集團，供行員覆核
     ——本模組只負責把證據攤開，是否併入歸戶由授信人員判斷。
+
+    affiliations 雖以 500 筆為上限，但 hidden_links 是 build_company_graph
+    的**輸出**而非輸入：500 家公司共用同一人可組出 124,750 個候選公司對，
+    全數回傳會產生超過 13MB 的單一回應。故依 weight（共用自然人數）由高到
+    低只回傳前 limit 筆——那正是授信人員本來就該優先看的：共用董監事愈多，
+    隱性關聯愈可疑，截斷掉的是產品邏輯上本來就次要的那些，不是妥協。
+    金額相同時以 (company_a, company_b) 排序決勝，確保結果穩定可重現。
     """
     declared_norm = {normalise_name(k): v for k, v in declared.items()}
     found: list[dict[str, Any]] = []
@@ -131,6 +144,8 @@ def hidden_links(
                 "shared_persons": list(data["shared"]),
                 "declared_group_a": declared_norm.get(company_a),
                 "declared_group_b": declared_norm.get(company_b),
+                "weight": data["weight"],
             }
         )
-    return sorted(found, key=lambda row: (row["company_a"], row["company_b"]))
+    found.sort(key=lambda row: (-row["weight"], row["company_a"], row["company_b"]))
+    return found[:limit]
