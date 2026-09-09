@@ -1,5 +1,5 @@
 import { describeError } from './errors'
-import type { ScreenResult, WorkbenchPayload } from './types'
+import type { CreditOpinion, GroupResult, ScreenResult, WorkbenchPayload } from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 
@@ -49,6 +49,26 @@ export function postGraph(body: {
   address?: string
 }): Promise<WorkbenchPayload> {
   return post<WorkbenchPayload>('/graph', body)
+}
+
+export function postCredit(
+  target: string,
+  groupId?: number,
+  groupExposureTwd?: number,
+): Promise<CreditOpinion> {
+  return post<CreditOpinion>('/credit', {
+    target,
+    group_id: groupId ?? null,
+    group_exposure_twd: groupExposureTwd ?? null,
+  })
+}
+
+export function postGroup(body: {
+  affiliations: { company: string; person: string; role?: string }[]
+  declared_groups?: Record<string, string>
+  exposures?: Record<string, number>
+}): Promise<GroupResult> {
+  return post<GroupResult>('/group', body)
 }
 
 /** 背景喚醒 serverless 函式。冷啟動實測約 5 秒，趁使用者閱讀時吃掉。 */

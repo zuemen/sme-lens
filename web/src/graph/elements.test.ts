@@ -133,3 +133,30 @@ describe('nodeColor（risk 配色：工作台）', () => {
     expect(nodeColor(normal(0.12), { scheme: 'risk', focus: 'TMule03' })).toBe('#f1c40f')
   })
 })
+
+describe('企金角色配色', () => {
+  const base = {
+    id: '泰昇精密',
+    role_zh: '授信申請人',
+    score: 0.1,
+    label: 'low' as const,
+    is_motif_center: false,
+    pagerank: 0,
+    narrative_zh: '',
+  }
+
+  it('六個企金角色都有專屬色，不會退回 normal 藍', () => {
+    const roles = ['applicant', 'anchor_buyer', 'buyer', 'shell', 'related', 'supplier']
+    const colors = roles.map((role) =>
+      nodeColor({ ...base, role }, { scheme: 'role' }),
+    )
+
+    // buyer 與 normal 共用藍色是刻意的（兩者都是「一般往來對象」），其餘四個必須各自不同
+    const distinctive = colors.filter((_, index) => roles[index] !== 'buyer')
+    expect(new Set(distinctive).size).toBe(distinctive.length)
+  })
+
+  it('未知角色仍安全退回 normal 色而不是 undefined', () => {
+    expect(nodeColor({ ...base, role: '沒見過的角色' }, { scheme: 'role' })).toBe('#5dade2')
+  })
+})

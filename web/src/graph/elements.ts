@@ -1,8 +1,15 @@
 import type { ElementDefinition } from 'cytoscape'
 import type { GraphNode, GraphPayload } from '../api/types'
 
-/** 角色色碼沿用 smelens/app/workbench.py 的 ROLE_COLOR，與既有截圖保持一致。 */
+/**
+ * 角色色碼。前八個沿用 smelens/app/workbench.py 的防詐劇本配色，與既有截圖一致；
+ * 後六個是企金劇本的角色。
+ *
+ * 這裡必須是原始 hex：Cytoscape 畫在 canvas 上，解析不了 CSS 變數。
+ * DOM 文字用 var(--color-*)，兩套配色是刻意分開的。
+ */
 const ROLE_COLOR: Record<string, string> = {
+  // 防詐劇本
   victim: '#f5b041',
   support: '#e74c3c',
   aggregator: '#c0392b',
@@ -11,6 +18,13 @@ const ROLE_COLOR: Record<string, string> = {
   peel_side: '#7f8c8d',
   otc: '#9b59b6',
   normal: '#5dade2',
+  // 企金劇本
+  applicant: '#f1c40f',
+  anchor_buyer: '#16a085',
+  buyer: '#5dade2',
+  shell: '#c0392b',
+  related: '#e67e22',
+  supplier: '#7f8c8d',
 }
 
 const FOCUS_COLOR = '#f1c40f'

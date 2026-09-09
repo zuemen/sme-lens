@@ -92,3 +92,54 @@ export interface SnaRow {
 export interface WorkbenchPayload extends GraphPayload {
   sna: SnaRow[]
 }
+
+/** 授信關注等級。與防詐分支的 RiskLabel 刻意分開：值域與語意都不同。 */
+export type AttentionLabel = 'watch' | 'caution' | 'normal'
+
+export interface CreditMotifHit {
+  motif: string
+  center: string
+  nodes: string[]
+  description_zh: string
+}
+
+export interface CreditOpinion {
+  target: string
+  attention_score: number
+  network_credit: number
+  label: AttentionLabel
+  label_zh: string
+  counterparty_diversity: number
+  centrality_percentile: Record<string, number>
+  community_risk_ratio: number
+  group_id: number | null
+  group_exposure_twd: number | null
+  motif_hits: CreditMotifHit[]
+  narrative_zh: string
+  recommendation_zh: string
+  graph: GraphPayload
+}
+
+export interface AffiliationInput {
+  company: string
+  person: string
+  role?: string
+}
+
+export interface HiddenLink {
+  company_a: string
+  company_b: string
+  shared_persons: string[]
+  declared_group_a: string | null
+  declared_group_b: string | null
+}
+
+export interface GroupResult {
+  /** 公司 → 集團編號 */
+  groups: Record<string, number>
+  /** 集團編號（字串鍵）→ 曝險合計 */
+  exposures: Record<string, number>
+  hidden_links: HiddenLink[]
+  /** 有曝險但不在名冊中的公司；後端刻意列名而非靜默丟棄 */
+  unattributed: string[]
+}

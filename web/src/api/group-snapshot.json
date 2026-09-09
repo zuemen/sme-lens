@@ -1,0 +1,23 @@
+{
+  "groups": {
+    "昇泰貿易": 0,
+    "泰昇投資": 0,
+    "泰昇精密": 0,
+    "禾昌五金": 1
+  },
+  "exposures": {
+    "0": 50000000.0
+  },
+  "hidden_links": [
+    {
+      "company_a": "昇泰貿易",
+      "company_b": "泰昇投資",
+      "shared_persons": [
+        "王秀英"
+      ],
+      "declared_group_a": "昇泰集團",
+      "declared_group_b": "泰昇集團"
+    }
+  ],
+  "unattributed": []
+}
