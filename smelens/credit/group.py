@@ -38,6 +38,15 @@ class Affiliation:
     集團；反過來，真正想藏身的人只要換一種名稱寫法掛名，也能繞過名稱比對。
     有 identifier 就用 identifier，沒有才退回正規化後的名稱——與先前完全一致，
     既有只傳名稱的呼叫方行為不變。
+
+    tier："A"＝法人董事關係（所代表法人→公司，無姓名歧義，見
+    smelens.data.gcis）；"B"＝自然人董事／股東關係，靠姓名比對，須交由銀行
+    自有身分證字號資料解析為候選才能確認，不可逕行歸戶。預設 "B"：既有只傳
+    公司／姓名的呼叫方（如手動輸入的名冊、示範劇本）維持與先前完全一致的行為，
+    不會被追溯貼上不該有的高信心標籤。
+
+    shares（持有股份數）僅在來源資料有提供時才會非 None，為候選關聯排序用的
+    真實權重，非比對依據。
     """
 
     company: str
@@ -45,6 +54,8 @@ class Affiliation:
     role: str = "董監事"
     company_id: str | None = None
     person_id: str | None = None
+    tier: str = "B"
+    shares: float | None = None
 
 
 def _identity_key(name: str, identifier: str | None, prefix: str) -> str:
@@ -68,6 +79,11 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     Affiliation 與 _identity_key）：同一 person_id 底下不論名稱寫法（含尾隨
     空白、全形變體）都視為同一人；不同 person_id 即使名稱字串相同也視為不同
     人，不會因為同名而把互不相干的公司併成一個集團。
+
+    邊屬性另有 tier："A"＝該邊至少有一個共用實體來自 Affiliation.tier=="A"
+    （法人董事關係，無姓名歧義）；否則 "B"（自然人姓名比對，須銀行自有資料
+    解析為候選）。同一對公司若同時因法人董事與同名自然人相連，以較高信心的
+    "A" 為準——A 層的證據不會被 B 層的雜訊稀釋。
     """
     raw = list(affiliations)
 
@@ -89,20 +105,29 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
         return key
 
     by_person: dict[str, set[str]] = {}
+    person_tier: dict[str, str] = {}
     for item in raw:
-        by_person.setdefault(person_key(item), set()).add(company_key(item))
+        pk = person_key(item)
+        by_person.setdefault(pk, set()).add(company_key(item))
+        # "A" 一旦成立就不再降級：同一個 person_key 若同時被 tier="A" 與
+        # tier="B" 的 Affiliation 指到（資料不一致或刻意混報），信心以較高者為準。
+        if person_tier.get(pk) != "A":
+            person_tier[pk] = item.tier
 
     g = nx.Graph()
     for item in raw:
         g.add_node(company_key(item))
     for person, companies in by_person.items():
         person_name = person_display[person]
+        tier = person_tier.get(person, "B")
         for u, v in combinations(sorted(companies), 2):
             if g.has_edge(u, v):
                 g[u][v]["weight"] += 1
                 g[u][v]["shared"].append(person_name)
+                if tier == "A":
+                    g[u][v]["tier"] = "A"
             else:
-                g.add_edge(u, v, weight=1, shared=[person_name])
+                g.add_edge(u, v, weight=1, shared=[person_name], tier=tier)
     for _, _, data in g.edges(data=True):
         data["shared"].sort()
 
@@ -185,6 +210,10 @@ def hidden_links(
                 "declared_group_a": declared_norm.get(company_a),
                 "declared_group_b": declared_norm.get(company_b),
                 "weight": data["weight"],
+                # tier："A"＝法人董事關係（無姓名歧義）；"B"＝自然人姓名比對候選，
+                # 見 build_company_graph docstring。舊資料（未經 build_company_graph
+                # 重建的圖）沒有這個邊屬性時退回 "B"，不假裝有法人層級的信心。
+                "tier": data.get("tier", "B"),
             }
         )
     found.sort(key=lambda row: (-row["weight"], row["company_a"], row["company_b"]))
