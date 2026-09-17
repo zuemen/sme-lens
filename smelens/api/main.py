@@ -63,6 +63,9 @@ from smelens.data.gcis import (
 )
 from smelens.explain.evidence import PipelineResult, generate_evidence, run_pipeline
 from smelens.explain.screening import screen_withdrawal
+from smelens.trust.anchor import RevocationRegistry
+from smelens.trust.vc import TrustAnchor
+from smelens.trust.vlei import promote_affiliations
 
 load_dotenv()  # 讀取 .env（TRONGRID_API_KEY / SMELENS_API_KEY）
 
@@ -225,6 +228,7 @@ REQUIRED_ROUTES = (
     "/group",
     "/gcis/group",
     "/earlywarn",
+    "/trust/verify",
     "/screen",
     "/graph",
 )
@@ -784,5 +788,128 @@ def earlywarn(
             "帶夾制的標籤擴散（label spreading，半監督式圖學習）：只需銀行既有的"
             "少量出事戶名單即可推論關聯風險，每一筆都附風險來源與最短路徑，"
             "分數只決定排序，交付授信人員覆核的是那條路徑。"
+        ),
+    }
+
+class TrustVerifyRequest(BaseModel):
+    """以可驗證憑證把 B 層候選升級為 A 層可歸戶。
+
+    銀行不必交出任何身分資料，本服務也不持有任何個資——只驗證一份帶簽章的
+    憑證（見 smelens.trust 的說明）。
+    """
+
+    affiliations: list[AffiliationInput] = Field(
+        description="待升級的關聯名冊（通常是 /group 或 /gcis/group 的輸出）", max_length=500
+    )
+    #: W3C 可驗證展示（VP），內含一或多份 vLEI OOR 角色憑證
+    presentation: dict[str, Any] = Field(description="可驗證展示（VP）")
+    #: 信任根 DID。vLEI 的類比是 GLEIF 根。
+    trust_root: str = Field(max_length=256, description="信任根 DID")
+    #: {簽發者 DID: 授權者 DID}，表達 GLEIF 根 → QVI → 法人 的授權鏈
+    authorised_by: dict[str, str] = Field(
+        default_factory=dict, description="簽發者授權表", max_length=200
+    )
+    #: LEI → 統一編號 的對照。真實世界由 GLEIF 的 LOU 維護，故由呼叫端注入。
+    lei_to_company_id: dict[str, str] = Field(
+        default_factory=dict, description="LEI 對統一編號", max_length=1000
+    )
+    revoked_credential_ids: list[str] = Field(
+        default_factory=list, description="已撤銷的憑證 id", max_length=1000
+    )
+    #: 撤銷清單的鏈上錨定參照（鏈名:交易:區塊）。留空即表示尚未錨定。
+    anchor_reference: str = Field(default="", max_length=256)
+
+
+@app.post("/trust/verify")
+def trust_verify(
+    req: TrustVerifyRequest, x_api_key: str | None = Header(default=None)
+) -> dict[str, Any]:
+    """驗證可驗證展示，回傳升級後的名冊、升級紀錄與被拒原因。
+
+    這條路徑解決的是本系統最深的限制：公開登記資料沒有身分證字號，自然人
+    董監事只能是候選。憑證讓「可能是同一人」變成「就是這個人」，而且不需要
+    任何一方交出個資。
+    """
+    _check_api_key(x_api_key)
+
+    anchor = TrustAnchor(root=req.trust_root, authorised_by=dict(req.authorised_by))
+    registry = RevocationRegistry(
+        revoked_ids=list(req.revoked_credential_ids), anchor_reference=req.anchor_reference
+    )
+    affiliations = [
+        Affiliation(
+            company=a.company,
+            person=a.person,
+            role=a.role,
+            company_id=a.company_id,
+            person_id=a.person_id,
+            tier=a.tier,
+            merge=a.merge,
+        )
+        for a in req.affiliations
+    ]
+
+    upgraded, promotions, rejected = promote_affiliations(
+        affiliations,
+        req.presentation,
+        anchor,
+        dict(req.lei_to_company_id),
+        revoked_ids=set(req.revoked_credential_ids),
+    )
+
+    # 升級後 tier 會變成 A，故要先記下哪些列是「被升級的自然人」，
+    # 輸出時才知道哪些 person 仍須遮蔽。
+    promoted_keys = {(p.company, p.person) for p in promotions}
+    groups_before = detect_groups(build_company_graph(affiliations))
+    groups_after = detect_groups(build_company_graph(upgraded))
+
+    return {
+        "promoted": [
+            {
+                "company": p.company,
+                # 自然人姓名一律遮蔽後輸出，與 /gcis/group 同一套標準
+                "person": mask_person_name(p.person),
+                "role": p.role,
+                "lei": p.lei,
+                "company_id": p.company_id,
+                "issuer": p.issuer,
+                "issuer_chain": p.issuer_chain,
+                "credential_id": p.credential_id,
+            }
+            for p in promotions
+        ],
+        "rejected": rejected,
+        "affiliations": [
+            {
+                "company": a.company,
+                # 遮蔽判準是「這個 person 是不是自然人」，不能用升級後的 tier
+                # ——升級後 tier 變成 A，真實姓名就會從這裡漏出去（實測踩到）。
+                # A 層原生列的 person 是所代表法人（公司名），遮它是錯的。
+                "person": (
+                    mask_person_name(a.person)
+                    if a.tier == "B" or (a.company, a.person) in promoted_keys
+                    else a.person
+                ),
+                "role": a.role,
+                "tier": a.tier,
+                "merge": a.merge,
+            }
+            for a in upgraded
+        ],
+        # 升級的價值要看得見：歸戶數從幾戶變成幾戶
+        "groups_before": len(set(groups_before.values())),
+        "groups_after": len(set(groups_after.values())),
+        "revocation": {
+            "merkle_root": registry.root,
+            "anchored": registry.anchored,
+            "anchor_reference": registry.anchor_reference,
+            "revoked_count": len(registry.revoked_ids),
+        },
+        "method_zh": (
+            "以 W3C 可驗證憑證（vLEI OOR 角色憑證）驗證自然人在法人的法定職務："
+            "did:key 解出簽發者公鑰、Ed25519 驗簽（RFC 8032）、檢查有效期、"
+            "沿授權鏈回溯至信任根、比對撤銷清單。五關全過才升級，"
+            "且只升級既有關聯、不新增任何關聯。撤銷清單的 Merkle 根可錨定上鏈，"
+            "使撤銷歷史無法被事後改寫。"
         ),
     }
