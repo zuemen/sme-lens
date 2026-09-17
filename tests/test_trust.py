@@ -245,8 +245,8 @@ def test_verified_credential_promotes_candidate_to_evidence():
     assert not rejected
 
 
-def test_promotion_never_creates_a_new_affiliation():
-    """憑證只能升級既有關聯，不能在圖上多畫一條邊。
+def test_credential_for_an_unknown_person_promotes_nothing():
+    """憑證指到名冊上沒有的人時，不得讓一條關聯憑空出現。
 
     否則任何人簽一份憑證就能影響歸戶結果，信任模型會被憑證持有者操縱。
     """
@@ -259,6 +259,34 @@ def test_promotion_never_creates_a_new_affiliation():
     assert len(upgraded) == len(_AFFILIATIONS)
     assert promotions == []
     assert all(a.tier == "B" for a in upgraded)
+
+
+def test_already_a_tier_affiliation_is_not_re_promoted():
+    """已經是 A 層的關聯不得被憑證再「升級」一次。
+
+    這一條釘住的是 promote_affiliations 裡的 `tier == "B"` 守衛。先前只測了
+    「憑證指到不存在的人」，那在守衛被拿掉時也照樣通過——守衛等於沒有測到
+    （實測把守衛改成無條件，測試全綠）。A 層列的 person 是所代表法人，
+    對它套用自然人角色憑證在語意上就是錯的，也會產生重複的升級紀錄。
+    """
+    a_tier = [
+        Affiliation(
+            "一詮精密工業",
+            "王小明",
+            role="法人董事",
+            company_id=COMPANY_ID,
+            person_id="99999999",
+            tier="A",
+            merge=True,
+        )
+    ]
+
+    upgraded, promotions, _ = promote_affiliations(
+        a_tier, _presentation(_issue()), ANCHOR, LEI_MAP
+    )
+
+    assert promotions == []
+    assert upgraded[0].role == "法人董事"  # 不得被加上「（vLEI 已驗證）」
 
 
 def test_non_oor_role_is_not_a_basis_for_attribution():
@@ -370,13 +398,24 @@ def test_inclusion_proof_is_none_for_absent_entry():
 
 
 def test_leaf_and_node_hashes_use_different_prefixes():
-    """葉節點與內部節點必須加不同前綴，否則可構造出兩棵不同的樹卻同一個根
-    （Merkle 樹的第二原像攻擊）。單一項目的根不得等於兩項目樹的任何內部節點。
-    """
-    single = merkle_root(["a"])
-    pair = merkle_root(["a", "b"])
+    """葉節點與內部節點必須加不同前綴（域分離），否則可構造出兩棵不同的樹卻
+    算出同一個根——Merkle 樹的第二原像攻擊。
 
-    assert single != pair
+    這一條要直接釘住「前綴確實被加上去了」。先前的版本只斷言
+    merkle_root(["a"]) != merkle_root(["a","b"])，那在**沒有任何前綴**時也成立，
+    所以把前綴拿掉測試照樣全綠（實測過）。改為與「沒有前綴時會算出的值」比對。
+    """
+    import hashlib
+
+    # 若葉節點沒有 0x00 前綴，單項目的根會等於 sha256(項目本身)
+    naive_leaf = hashlib.sha256(b"a").hexdigest()
+    assert merkle_root(["a"]) != naive_leaf
+
+    # 若內部節點沒有 0x01 前綴，兩項目的根會等於 sha256(葉a ‖ 葉b)
+    leaf_a = hashlib.sha256(b"\x00a").digest()
+    leaf_b = hashlib.sha256(b"\x00b").digest()
+    naive_node = hashlib.sha256(leaf_a + leaf_b).hexdigest()
+    assert merkle_root(["a", "b"]) != naive_node
 
 
 def test_registry_reports_whether_it_is_anchored():
