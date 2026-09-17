@@ -1,0 +1,7 @@
+# 前端專案（Root Directory = web/）專用。
+# 有了這個檔，Vercel 就不會套用 repo 根目錄那份為後端寫的 .vercelignore——
+# 那份排除了 /web/，會讓前端 build 找不到任何原始碼（vite: command not found）。
+node_modules
+dist
+test-results
+playwright-report
