@@ -16,7 +16,7 @@
 
 ## 網站版演示前準備（預設）
 
-- 網址：`<部署後填入，步驟與驗證指令見 README「部署」一節>`
+- 網址：https://sme-lens.vercel.app（後端 API：https://sme-lens-api.vercel.app；部署步驟與驗證指令見 README「部署」一節）
 - 開場前至少 30 秒先打開網址，依序在 `/credit`（泰昇精密）、`/group`（按「執行集團
   歸戶」）、`/screening`（`TOtcOut01`）各跑一次（喚醒 Vercel serverless 冷啟動，
   實測約 5 秒），現場按鈕即可秒出結果。三個頁面各自獨立冷啟動，漏暖一個，現場那一步
