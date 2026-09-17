@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 import smelens.api.main as main_module
@@ -310,3 +313,92 @@ def test_group_rejects_oversized_roster():
     )
 
     assert response.status_code == 422
+
+
+def test_mask_person_name_keeps_first_and_last_character():
+    """自然人姓名遮蔽：保留首尾字，中間以 ○ 取代；兩字姓名只留首字。"""
+    from smelens.api.main import mask_person_name
+
+    assert mask_person_name("陳建宏") == "陳○宏"
+    assert mask_person_name("張家豪") == "張○豪"
+    assert mask_person_name("王大") == "王○"
+    assert mask_person_name("李") == "李"
+    assert mask_person_name("") == ""
+    # 四字以上姓名（複姓、原住民姓名、誤入姓名欄的法人名）中間全遮
+    assert mask_person_name("歐陽建宏") == "歐○○宏"
+
+
+def test_gcis_group_masks_natural_person_names(monkeypatch):
+    """/gcis/group 的 B 層候選姓名必須遮蔽後才輸出，且標明 masked。
+
+    這個端點是公開無憑證的，把真實姓名與真實公司、真實統編綁在一起回傳，
+    在一份金融法遵作品上是無合法事由的個資揭露。遮蔽後要展示的「同名候選
+    存在、須由銀行以身分證字號解析」這個機制完全不受影響。
+    """
+    from smelens.credit.group import Affiliation
+
+    def fake_extract(*args, **kwargs):
+        return (
+            [
+                Affiliation(
+                    company="甲公司",
+                    person="乙母公司",
+                    role="法人董事",
+                    company_id="12345678",
+                    person_id="87654321",
+                    tier="A",
+                    merge=True,
+                ),
+                Affiliation(
+                    company="甲公司",
+                    person="陳建宏",
+                    role="董事",
+                    company_id="12345678",
+                    tier="B",
+                    merge=False,
+                ),
+            ],
+            {"visited_companies": 2, "max_companies": 300, "truncated": False,
+             "frontier_remaining": 0},
+        )
+
+    monkeypatch.setattr("smelens.api.main.extract_neighborhood_with_meta", fake_extract)
+    monkeypatch.setattr("smelens.api.main.demo_index_path", lambda: Path("dummy.sqlite"))
+
+    body = client.get("/gcis/group", params={"company_id": "12345678"}).json()
+
+    people = [c["person"] for c in body["candidates"]]
+    assert people == ["陳○宏"]
+    assert all(c["masked"] for c in body["candidates"])
+    # 真實姓名不得出現在回應的任何角落
+    assert "陳建宏" not in json.dumps(body, ensure_ascii=False)
+    # 法人名稱屬公司登記公示資訊，照原樣呈現，不遮
+    assert body["evidence"][0]["parent"] == "乙母公司"
+    assert "遮蔽" in body["privacy"]
+
+
+def test_screen_rejects_non_finite_amount():
+    """amount_usdt 不得為 inf——Field(gt=0) 擋不住 inf（inf > 0 為真）。
+
+    漏掉這道驗證時可以產出一份「申請金額 inf USDT」的可疑交易報告草稿，
+    而 JSON 序列化又把它變成 null，對外像是「金額不明」。
+    """
+    # 用 content 而非 json=：httpx 的 JSON 編碼器本身就拒絕序列化 inf，
+    # 必須直接送 JSON 字面值才測得到伺服器端的驗證（同 group_exposure_twd 的測法）。
+    for bad in ("Infinity", "-Infinity", "NaN"):
+        response = client.post(
+            "/screen",
+            content=f'{{"target": "TOtcOut01", "amount_usdt": {bad}, "request_id": "T"}}',
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 422, bad
+
+    # Infinity 要由新增的有限值驗證擋下（gt=0 對 inf 為真，擋不住）；
+    # NaN 與 -Infinity 本來就過不了 gt=0，訊息不同但一樣是 422。
+    response = client.post(
+        "/screen",
+        content='{"target": "TOtcOut01", "amount_usdt": Infinity, "request_id": "T"}',
+        headers={"content-type": "application/json"},
+    )
+    assert "有限數值" in response.text

@@ -152,6 +152,19 @@ class ScreenRequest(BaseModel):
     amount_usdt: float = Field(gt=0)
     request_id: str | None = Field(default=None, max_length=64)
 
+    @field_validator("amount_usdt")
+    @classmethod
+    def _finite_amount(cls, v: float) -> float:
+        """擋掉 inf／nan：Field(gt=0) 擋不住 inf（inf > 0 為真）。
+
+        /credit 與 /group 都已經有這道驗證，只有這裡漏了——結果是可以產出一份
+        「申請金額 inf USDT」的可疑交易報告草稿，而 JSON 序列化又把它變成 null，
+        對外像是「金額不明」。同一份 API 的三個端點不該有兩套標準。
+        """
+        if not math.isfinite(v):
+            raise ValueError("amount_usdt 需為有限數值")
+        return v
+
 
 class GraphRequest(BaseModel):
     """工作台圖譜請求：內建範例圖，或 TronGrid 即時抓取的 2-hop 真實圖。"""
@@ -536,6 +549,30 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
         "unattributed": unattributed,
     }
 
+def mask_person_name(name: str) -> str:
+    """把自然人姓名遮成「陳○宏」形式後才對外輸出。
+
+    為什麼一定要遮：/gcis/group 是**公開無憑證**的端點，把真實自然人姓名與真實
+    公司名、真實統一編號綁在一起回傳，而 UI 上這份清單的語意是「此人可能是本
+    集團未申報的關係人」。這是一份金融法遵主題的作品，卻在自己的 Demo 上做出
+    無合法事由的個資揭露——評審中只要有一位法遵或個資背景的人，這就是一擊致命
+    的問題。遮蔽後「同名候選確實存在、且必須交由銀行以身分證字號解析」這個論點
+    完全不受影響，因為要展示的是**機制**，不是某個特定的人是誰。
+
+    保留首尾字、中間以 ○ 取代；兩字姓名只保留首字。非中文字元（英文名、法人名
+    誤入姓名欄）長度 <= 2 時同樣只留首字，避免規則在邊界上失效。
+
+    注意：遮蔽只發生在 API 輸出邊界。引擎內部仍需完整姓名才能做同名比對，
+    所以不要把遮蔽塞進 gcis 載入器或 build_company_graph。
+    """
+    text = name.strip()
+    if len(text) <= 1:
+        return text
+    if len(text) == 2:
+        return f"{text[0]}○"
+    return f"{text[0]}{'○' * (len(text) - 2)}{text[-1]}"
+
+
 #: /gcis/group 的鄰域展開上限。與 extract_neighborhood 的預設一致，明寫在
 #: 這裡是因為回應會把它report 出去——授信人員看到的群組若因上限而截斷，
 #: 必須看得到這件事，不能只看到一個像是完整答案的清單。
@@ -600,6 +637,8 @@ def gcis_group(
         for a in affiliations
         if a.tier == "A" and a.merge and a.company in set(members)
     ]
+    # 先以真實姓名去重（同一人同一公司只留一筆），再遮蔽——順序相反的話，
+    # 「陳大明」與「陳小明」會遮成同一個「陳○明」而被誤併成一筆。
     candidates = sorted(
         {(a.company, a.person) for a in affiliations if a.tier == "B" and a.company in set(members)}
     )
@@ -609,7 +648,9 @@ def gcis_group(
         "group_members": members,
         "group_size": len(members),
         "evidence": sorted(evidence, key=lambda e: (e["company"], e["parent"])),
-        "candidates": [{"company": c, "person": p} for c, p in candidates],
+        "candidates": [
+            {"company": c, "person": mask_person_name(p), "masked": True} for c, p in candidates
+        ],
         "elapsed_seconds": round(elapsed, 3),
         # 截斷狀態直接引用 BFS 自己回報的 meta，不用「回傳公司數是否達上限」
         # 反推——反推會在剛好等於上限卻其實沒截斷時說謊，也看不出停止時邊界
@@ -619,8 +660,13 @@ def gcis_group(
         "neighborhood_frontier_remaining": meta["frontier_remaining"],
         "scope": (
             "歸戶僅採 A 層（法人董事）證據，與全國索引一致；"
-            "B 層（自然人同名）只列候選，不合併，且線上精簡索引的候選清單"
+            "B 層（姓名欄同名）只列候選，不合併，且線上精簡索引的候選清單"
             "不如全國版完整。用於授信決策需接行內 KYC 身分資料。"
+        ),
+        "privacy": (
+            "本端點為公開展示用途，自然人姓名一律遮蔽為「陳○宏」形式後輸出；"
+            "法人名稱與統一編號屬公司登記公示資訊，照原樣呈現。"
+            "行內導入時姓名解析在銀行自有系統內完成，不經本服務。"
         ),
         "source": "經濟部商業發展署 董監事資料集（政府資料開放授權條款－第 1 版）",
     }

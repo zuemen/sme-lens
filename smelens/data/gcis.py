@@ -34,6 +34,7 @@ import hashlib
 import os
 import shutil
 import sqlite3
+import uuid
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -600,7 +601,10 @@ def demo_index_path(cache_dir: Path | None = None) -> Path:
     if target.exists():
         return target
     base.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + f".unpacking{os.getpid()}")
+    # 檔名要夠獨特：同一個 serverless 實例可能同時處理多個請求，只用 PID 的話
+    # 多個執行緒會寫進同一個暫存檔，先完成的 rename 走掉，其他還在寫——於是那個
+    # 實例之後永久沿用一個被截斷的 SQLite。加上隨機字串讓每次解壓各寫各的。
+    tmp = target.with_suffix(target.suffix + f".unpacking{os.getpid()}-{uuid.uuid4().hex[:8]}")
     with gzip.open(DEMO_INDEX_GZ, "rb") as src, open(tmp, "wb") as dst:
         shutil.copyfileobj(src, dst)
     tmp.replace(target)
