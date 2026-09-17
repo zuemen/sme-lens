@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>企鏡 SME Lens — 一頁式企劃書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" />
+<style>
+  @page { size: A4; margin: 0; }
+  :root{
+    --ink:#101418; --sub:#4a5560; --line:#c9d1d9; --rule:#101418;
+    --hi:#b3261e; --ok:#0f6d4a; --bg:#ffffff; --tint:#f3f5f7;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--bg);}
+  body{
+    width:210mm; height:297mm; padding:9mm 10mm 7mm;
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    color:var(--ink); font-size:8.1pt; line-height:1.45;
+    display:flex; flex-direction:column; -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums;}
+  b,strong{font-weight:700;}
+
+  /* ── header ── */
+  header{display:flex; align-items:flex-end; gap:6mm; border-bottom:1.6pt solid var(--rule); padding-bottom:2.4mm;}
+  .brand{font-size:19pt; font-weight:900; letter-spacing:-.4pt; line-height:1;}
+  .brand span{font-size:11.5pt; font-weight:500; color:var(--sub); letter-spacing:0;}
+  .tag{margin-left:auto; text-align:right; font-size:7pt; color:var(--sub); line-height:1.5;}
+  .tag b{display:inline-block; border:.7pt solid var(--ink); border-radius:1mm; padding:.3mm 1.4mm; margin-left:1mm; font-weight:500;}
+  .claim{margin-top:2.2mm; font-size:11.6pt; font-weight:700; letter-spacing:-.2pt;}
+  .claim em{font-style:normal; border-bottom:2.4pt solid var(--hi); padding-bottom:.3mm;}
+
+  /* ── layout ── */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:0 6mm; margin-top:3mm; flex:1;}
+  section{margin-bottom:3.1mm;}
+  h2{font-size:8.2pt; font-weight:900; letter-spacing:.3pt; padding-bottom:.9mm;
+     border-bottom:.7pt solid var(--line); margin-bottom:1.6mm; display:flex; align-items:baseline; gap:1.6mm;}
+  h2 i{font-style:normal; font-size:6.6pt; color:#fff; background:var(--ink);
+       width:3.6mm; height:3.6mm; display:inline-flex; align-items:center; justify-content:center; border-radius:.6mm;}
+  h2 u{text-decoration:none; font-weight:400; font-size:6.9pt; color:var(--sub); margin-left:auto;}
+  p{margin-bottom:1.3mm; text-align:justify;}
+  .sub{color:var(--sub);}
+
+  /* quote from the regulator */
+  blockquote{border-left:2pt solid var(--hi); background:var(--tint);
+    padding:1.6mm 2.2mm; margin:1.3mm 0; font-size:7.6pt; line-height:1.42;}
+  blockquote b{color:var(--hi);}
+  blockquote cite{display:block; margin-top:.9mm; font-style:normal; font-size:6.6pt; color:var(--sub);}
+
+  /* metric strip */
+  .kpi{display:grid; grid-template-columns:repeat(4,1fr); gap:1.4mm; margin:1.5mm 0;}
+  .kpi div{border:.7pt solid var(--line); border-radius:.8mm; padding:1.3mm 1mm; text-align:center;}
+  .kpi b{display:block; font-size:12.4pt; font-weight:900; line-height:1.05; letter-spacing:-.4pt;}
+  .kpi span{display:block; font-size:6.2pt; color:var(--sub); margin-top:.5mm; line-height:1.25;}
+
+  /* two-tier table */
+  table{width:100%; border-collapse:collapse; font-size:7.3pt; margin:1.2mm 0;}
+  th,td{border:.6pt solid var(--line); padding:1.15mm 1.3mm; vertical-align:top; text-align:left;}
+  th{background:var(--tint); font-weight:700; font-size:7pt;}
+  td.n{text-align:right;}
+  .A{color:var(--ok); font-weight:700;}
+  .B{color:var(--hi); font-weight:700;}
+
+  /* pipeline diagram */
+  .flow{display:grid; grid-template-columns:auto 4mm auto 4mm auto; align-items:center;
+        gap:0; margin:1.6mm 0 1mm; font-size:6.9pt;}
+  .flow .box{border:.8pt solid var(--ink); border-radius:1mm; padding:1.4mm 1.2mm; text-align:center; line-height:1.3;}
+  .flow .box b{display:block; font-size:7.4pt;}
+  .flow .box span{color:var(--sub); font-size:6.2pt;}
+  .flow .ar{text-align:center; color:var(--sub); font-size:9pt; font-weight:700;}
+  .flow .tierbox{padding:0; border:none;}
+  .flow .tierbox div{border:.8pt solid var(--ink); border-radius:1mm; padding:1.1mm; margin-bottom:.9mm; line-height:1.28;}
+  .flow .tierbox div:last-child{margin-bottom:0;}
+  .flow .tierbox .a{border-color:var(--ok);}
+  .flow .tierbox .b{border-color:var(--hi); border-style:dashed;}
+
+  .phase{display:grid; grid-template-columns:auto 1fr; gap:0 2mm; font-size:7.2pt;}
+  .phase b{font-family:"IBM Plex Mono",monospace; color:var(--sub);}
+  .phase p{margin-bottom:1mm;}
+
+  ul{list-style:none; margin:.7mm 0;}
+  li{padding-left:3.1mm; position:relative; margin-bottom:.85mm;}
+  li::before{content:"▪"; position:absolute; left:.5mm; color:var(--sub); font-size:6pt; top:.1mm;}
+
+  .case{border:.9pt solid var(--ink); border-radius:1mm; padding:1.8mm 2mm; margin:1.2mm 0; background:var(--tint);}
+  .case .ba{display:grid; grid-template-columns:1fr auto 1fr; gap:2mm; align-items:center; margin:1.2mm 0;}
+  .case .ba div{font-size:7.1pt; line-height:1.35;}
+  .case .ba .ar{font-size:11pt; color:var(--hi); font-weight:900;}
+  .case .ba b{display:block; font-size:8.6pt;}
+
+  footer{border-top:1.6pt solid var(--rule); padding-top:1.8mm; margin-top:auto;
+    display:flex; gap:4mm; align-items:center; font-size:6.8pt; color:var(--sub); line-height:1.4;}
+  footer .qr{width:17mm; height:17mm; border:.7pt solid var(--line); border-radius:.8mm;
+    display:flex; align-items:center; justify-content:center; text-align:center; font-size:5.4pt; color:var(--sub); flex:0 0 auto;}
+  footer b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">企鏡 <span>SME Lens</span></div>
+  <div class="tag">
+    2026 臺灣中小企業銀行校園金融科技創意挑戰賽<br />
+    情境：<b>企業金融服務創新</b><b>科技防詐</b>
+  </div>
+</header>
+
+<div class="claim">銀行不缺分數，缺的是<em>看得見的理由</em>——把已經在行內的資料，變成集團歸戶的證據。</div>
+
+<div class="cols">
+
+<!-- ═══════ LEFT ═══════ -->
+<div>
+
+<section>
+  <h2><i>1</i>問題：不是沒有資料，是沒有交叉比對的機制<u>已有裁罰先例</u></h2>
+  <p>集團授信歸戶目前倚賴客戶自行申報的關係企業表，加上行員人工比對。共用董監事、交叉持股、法人代表席次等隱性關聯查不出來，集團曝險就被拆散在看似無關的借款人身上。</p>
+  <blockquote>
+    「貴行於 105 年 8 月 3 日自行發現鼎興貿易及英毅有限公司為利害關係人，<b>顯示即使前董事未申報，貴行仍可透過相關資訊檢核發現</b>。貴行未……<b>妥善建立利害關係人資料建檔之確認機制</b>並落實查核，致有違反銀行法第 32 條及第 33 條規定之虞。」
+    <cite>金管會裁罰永豐商業銀行鼎興集團授信案，罰鍰新臺幣 1,000 萬元（金管銀控字第 10560005322 號，105/11/08）；同案華南銀行罰 800 萬元。</cite>
+  </blockquote>
+  <p>主管機關自己認定：<b>資料在銀行手上，失職在於沒有建立交叉檢核的機制</b>。而《銀行公會會員徵信準則》早已要求企業授信徵提董監事名冊——資料一直在流程裡，缺的是跨戶比對。</p>
+  <p class="sub">銀行法 §33-3 授權辦法：對同一關係企業授信總餘額不得逾銀行淨值 <b>40%</b>（同一法人 15%、同一自然人 3%）。歸戶漏一家，曝險就少算一筆，觸及的是法定上限而非內控偏好。</p>
+</section>
+
+<section>
+  <h2><i>2</i>解法：兩層信心度的關係圖歸戶<u>已跑過全國資料</u></h2>
+  <p>以經濟部商業發展署<b>董監事資料集</b>（全國公司登記，每月更新，政府資料開放授權）建關係圖，用連通元件做遞移歸戶——A 與 B 共用、B 與 C 共用，三家同屬一戶。公開資料<b>沒有身分證字號</b>，所以證據強度必須分層，而不是假裝一致：</p>
+  <table>
+    <tr><th style="width:15mm">層級</th><th>依據與處置</th></tr>
+    <tr><td><span class="A">A 層</span><br /><span class="sub">高信心</span></td>
+        <td><b>法人董事關係</b>（所代表法人 → 公司）。法人對法人，<b>零姓名歧義</b>，可直接歸戶。全國 <b class="mono">67,838</b> 條邊，其中 81.1% 兩端皆可對回統一編號。</td></tr>
+    <tr><td><span class="B">B 層</span><br /><span class="sub">候選</span></td>
+        <td><b>自然人董監事同名</b>。全國 243,438 人以姓名串起 ≥2 家公司，但<b>「陳建宏」一個姓名就掛在 411 家</b>。故 B 層<b>只產出候選清單</b>，交由銀行以 KYC 既有身分證字號解析，<b>絕不自動合併</b>。</td></tr>
+  </table>
+  <p>引擎以<b>識別碼為鍵、姓名僅為退回選項</b>：同名不同識別碼不得合併、同識別碼不同寫法必須合併，兩者皆有測試釘住。銀行端接上自有 KYC 資料即為 A 層品質。</p>
+</section>
+
+<section>
+  <h2><i>3</i>兩種偽關聯，都要擋掉<u>跑真實資料才發現</u></h2>
+  <ul>
+    <li><b>機構型股東</b>：中國信託坐 61 家、國發基金 50 家董事會。遞移閉包會把半個資本市場併成一個集團（實測最大群組 7,187 家）。銀行法的關係企業看的是<b>控制</b>而非席位，故此類實體<b>橋接而不合併</b>——證據仍呈現，但不作為歸戶依據。</li>
+    <li><b>合資公司</b>：被多個不同法人董事共同投資者，會把各投資方原本獨立的集團串起。<b>共同投資不等於控制</b>，同樣橋接而不合併。</li>
+  </ul>
+  <p class="sub">兩者是同一個規則的兩端，門檻皆由資料分布決定並可由銀行調整，非主觀設定。</p>
+</section>
+
+
+<section>
+  <h2><i>4</i>機制一覽<u>單一統編 0.33 秒</u></h2>
+  <div class="flow">
+    <div class="box"><b>公開登記資料</b><span>董監事資料集<br />每月更新</span></div>
+    <div class="ar">›</div>
+    <div class="tierbox">
+      <div class="a"><b style="color:var(--ok)">A 層｜法人董事</b><span>零歧義　直接歸戶</span></div>
+      <div class="b"><b style="color:var(--hi)">B 層｜自然人同名</b><span>候選　待 KYC 解析</span></div>
+    </div>
+    <div class="ar">›</div>
+    <div class="box"><b>歸戶與證據</b><span>集團曝險<br />未申報關聯<br />授信意見書</span></div>
+  </div>
+  <p class="sub" style="margin-top:.6mm">機構型股東與合資公司在此階段標記為橋接實體：關係仍呈現於證據，但不參與合併。</p>
+</section>
+</div>
+
+<!-- ═══════ RIGHT ═══════ -->
+<div>
+
+<section>
+  <h2><i>5</i>實證：不是構想，是已經跑完的結果<u>可重跑驗證</u></h2>
+  <div class="kpi">
+    <div><b class="mono">102萬</b><span>家公司<br />全國登記資料</span></div>
+    <div><b class="mono">67,838</b><span>條法人控股邊<br />零姓名歧義</span></div>
+    <div><b class="mono">18,616</b><span>個多公司集團<br />遞移歸戶結果</span></div>
+    <div><b class="mono">0.33秒</b><span>單一統編查詢<br />二階鄰域展開</span></div>
+  </div>
+  <p class="sub">資料來源：經濟部商業發展署董監事資料集（1,530,231 有效列、1,024,842 家公司）。上述每一個數字皆由開源腳本對全量資料重跑產生，非估計值。</p>
+</section>
+
+<section>
+  <h2><i>6</i>實例：一詮精密工業（統編 35866232）<u>決賽現場可即席重現</u></h2>
+  <div class="case">
+    <div class="ba">
+      <div><b>修正前</b>系統找出四家子公司互為一夥<br /><span class="sub">世銓科技、安芯精工、惠智先進、立誠光電</span></div>
+      <div class="ar">→</div>
+      <div><b>修正後</b>母公司歸位，集團完整<br /><span class="sub">12 家成員，<b class="A">12/12 皆由 A 層證據支撐</b></span></div>
+    </div>
+    <p style="font-size:7.1pt">原本的演算法把子公司彼此連起，卻沒說出「它們的老闆是一詮」——而那正是授信人員唯一想知道的事。此缺陷在合成情境上永遠不會出現，只有接上真實登記資料才會現形。</p>
+  </div>
+</section>
+
+<section>
+  <h2><i>7</i>可信度：我們也證明它什麼時候「不開火」<u>內建對照組</u></h2>
+  <p>一個什麼都標紅的風控工具，訊號等於零。系統內建<b>對照組</b>：結構乾淨的公司關注分數 0.06、零命中，建議「依既有授信條件辦理」；而問題申請人 0.82、命中兩項圖樣、建議「暫緩核貸並實地查核」。</p>
+  <ul>
+    <li>輸出是<b>一句可執行的建議＋結構證據</b>，不是評等分數——本系統不產生也不宣稱授信評等。</li>
+    <li>資金環證據以<b>申請人為主詞</b>重述完整路徑，行員可直接寫進徵信報告。</li>
+    <li>決策採分級處置（加強審查 EDD／暫緩並人工覆核），<b>人在迴路中</b>。</li>
+  </ul>
+</section>
+
+<section>
+  <h2><i>8</i>落地與誠實邊界</h2>
+  <ul>
+    <li><b>定位</b>：疊在既有徵信與聯徵資料<b>之上的複核清單</b>，不取代聯徵評等，不新增客戶負擔。</li>
+    <li><b>資料</b>：公開登記資料可證明方法有效；用於授信決策需接行內 KYC 身分資料，將 B 層提升為 A 層品質。</li>
+    <li><b>尚未完成</b>：貸後擴散預警為路線圖項目；跨境控股層規劃以 LEI／可驗證憑證（vLEI）承接，現階段未實作。</li>
+  </ul>
+</section>
+
+
+<section>
+  <h2><i>9</i>導入路徑<u>不需客戶配合、不改核心系統</u></h2>
+  <div class="phase">
+    <b>一</b><p><b>唯讀試辦</b>：以公開登記資料對現有集團歸戶名冊做一次全量複核，產出差異清單。不接核心系統、不影響任何既有流程，即可量測「漏掛率」。</p>
+    <b>二</b><p><b>接行內身分資料</b>：以 KYC 既有統一編號與身分證字號解析 B 層候選，將自然人關聯提升至 A 層品質，複核清單即可進入徵信作業。</p>
+    <b>三</b><p><b>常態化</b>：隨月更新資料重算，於新案申請與定期覆審時觸發；每次全國重算 16 秒、單一客戶查詢 0.33 秒，可排入夜間批次或即時查詢。</p>
+  </div>
+</section>
+
+<section>
+  <h2><i>10</i>三個最難的問題，先自己回答<u>評審提問預演</u></h2>
+  <div class="phase">
+    <b>Q</b><p><b>同名同姓怎麼辦？</b>——所以才分兩層。姓名只用於<b>產生候選</b>，永不自動合併；A 層（法人董事）零姓名歧義，已占全國 67,838 條邊。行內接上身分證字號後，B 層即升為 A 層品質。</p>
+    <b>Q</b><p><b>和聯徵中心的集團歸戶有何不同？</b>——聯徵看的是<b>已申報</b>的關係；本系統看的是<b>登記事實</b>，用來找出兩者的差集。定位是複核清單，不是替代品。</p>
+    <b>Q</b><p><b>會不會誤殺？</b>——內建對照組：結構乾淨的公司分數 0.06、零命中、建議依既有條件辦理。兩種偽關聯（機構型股東、合資公司）已在全國資料上實測並擋掉，門檻由資料分布決定且可由銀行調整。</p>
+  </div>
+</section>
+</div>
+</div>
+
+<footer>
+  <div class="qr">線上 Demo<br />QR</div>
+  <div>
+    <b>線上 Demo</b>（授信意見書／集團歸戶，可輸入真實統一編號）　·　<b>原始碼與可重現分析</b>：github.com/zuemen/sme-lens<br />
+    技術：關係圖結構分析（SNA）＋連通元件歸戶＋規則式風險圖樣；FastAPI／React；<b class="mono">181</b> 項後端測試、<b class="mono">74</b> 項前端測試、端對端測試全綠，CI 持續驗證。<br />
+    資料授權：政府資料開放授權條款－第 1 版，提供機關／經濟部商業發展署。本作品僅供研究與競賽展示，非投資或法律建議。
+  </div>
+</footer>
+
+</body>
+</html>
