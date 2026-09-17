@@ -4,7 +4,10 @@
 .pytest_cache
 .ruff_cache
 
-/data/
+# data/ 只保留 demo 精簡索引（vercel.json 的 includeFiles 需要它；整個排除會讓
+# /gcis/group 回 503「示範資料未就緒」）
+/data/*
+!/data/demo/
 checkpoints/
 research/
 docs/
