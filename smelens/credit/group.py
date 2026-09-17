@@ -47,6 +47,16 @@ class Affiliation:
 
     shares（持有股份數）僅在來源資料有提供時才會非 None，為候選關聯排序用的
     真實權重，非比對依據。
+
+    merge：這個共用實體是否可以拿來把兩家公司併成同一個歸戶集團。預設 True，
+    既有呼叫方（demo 劇本、手動名冊）行為不變。False 用在銀行、政府基金這類
+    「機構股東」：它們在數十家公司掛法人董事席次是機構投資，不是控股關係——
+    全國實測發現若不分青紅皂白全部拿來做遞移合併，中國信託銀行、國發基金等
+    十來個機構會把 7,187 家互不相干的公司透過遞移閉包併成一個假集團（見
+    docs/GCIS_FINDINGS.md）。merge=False 的關係仍會入圖、仍會被列為證據
+    （hidden_links 看得到、標成 bridge_only），只是不會被 detect_groups
+    拿來當作合併兩家公司的依據——「兩家公司都有中國信託的席次」是行員該看到
+    的資訊，不代表這兩家公司是同一個集團。
     """
 
     company: str
@@ -56,6 +66,7 @@ class Affiliation:
     person_id: str | None = None
     tier: str = "B"
     shares: float | None = None
+    merge: bool = True
 
 
 def _identity_key(name: str, identifier: str | None, prefix: str) -> str:
@@ -84,6 +95,11 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     （法人董事關係，無姓名歧義）；否則 "B"（自然人姓名比對，須銀行自有資料
     解析為候選）。同一對公司若同時因法人董事與同名自然人相連，以較高信心的
     "A" 為準——A 層的證據不會被 B 層的雜訊稀釋。
+
+    邊屬性另有 bridge_only：True 代表這條邊目前的共用實體全部是
+    Affiliation.merge==False（機構股東等橋接點），detect_groups 不會用它來
+    合併兩家公司；只要其中一個共用實體 merge==True，這條邊就是可合併的
+    真實邊（bridge_only=False），機構橋接不會蓋掉真正的控股關係證據。
     """
     raw = list(affiliations)
 
@@ -106,6 +122,7 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
 
     by_person: dict[str, set[str]] = {}
     person_tier: dict[str, str] = {}
+    person_merge: dict[str, bool] = {}
     for item in raw:
         pk = person_key(item)
         by_person.setdefault(pk, set()).add(company_key(item))
@@ -113,6 +130,10 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
         # tier="B" 的 Affiliation 指到（資料不一致或刻意混報），信心以較高者為準。
         if person_tier.get(pk) != "A":
             person_tier[pk] = item.tier
+        # merge 同理：同一個實體只要有一筆 Affiliation 說「這是可合併的」
+        # （merge=True），就不因為另一筆混報 merge=False 而被降級為機構橋接點。
+        if not person_merge.get(pk, False):
+            person_merge[pk] = item.merge
 
     g = nx.Graph()
     for item in raw:
@@ -120,14 +141,20 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     for person, companies in by_person.items():
         person_name = person_display[person]
         tier = person_tier.get(person, "B")
+        can_merge = person_merge.get(person, True)
         for u, v in combinations(sorted(companies), 2):
             if g.has_edge(u, v):
-                g[u][v]["weight"] += 1
-                g[u][v]["shared"].append(person_name)
+                data = g[u][v]
+                data["weight"] += 1
+                data["shared"].append(person_name)
                 if tier == "A":
-                    g[u][v]["tier"] = "A"
+                    data["tier"] = "A"
+                if can_merge:
+                    data["bridge_only"] = False
             else:
-                g.add_edge(u, v, weight=1, shared=[person_name], tier=tier)
+                g.add_edge(
+                    u, v, weight=1, shared=[person_name], tier=tier, bridge_only=not can_merge
+                )
     for _, _, data in g.edges(data=True):
         data["shared"].sort()
 
@@ -148,9 +175,23 @@ def detect_groups(company_graph: nx.Graph) -> dict[str, int]:
     受行程的 hash 隨機化影響。歸戶結果的「值」不受影響，但回應中鍵的順序會在不同
     請求之間跳動，而前端是照這個順序渲染歸戶結果表的——同一筆查詢重跑一次表格就
     換個排列，現場看起來像資料變了。
+
+    連通元件只沿著 bridge_only!=True 的邊展開：邊屬性 bridge_only=True 代表
+    這條邊唯一的共用實體是 merge=False 的機構股東（見 build_company_graph／
+    Affiliation.merge 文件）——這種邊本身仍留在 company_graph 裡供 hidden_links
+    等函式回報「兩家公司都有這個機構股東」的證據，但不能拿來把兩家公司併成
+    同一個歸戶集團，否則全國實測發現中國信託銀行、國發基金這類同時出任數十家
+    公司法人董事的機構，會把上千家互不相干的公司透過遞移閉包併成一個假集團。
     """
+    merge_graph = nx.Graph()
+    merge_graph.add_nodes_from(company_graph.nodes())
+    merge_graph.add_edges_from(
+        (u, v)
+        for u, v, data in company_graph.edges(data=True)
+        if not data.get("bridge_only", False)
+    )
     groups: dict[str, int] = {}
-    components = sorted(nx.connected_components(company_graph), key=lambda c: sorted(c)[0])
+    components = sorted(nx.connected_components(merge_graph), key=lambda c: sorted(c)[0])
     for index, component in enumerate(components):
         for company in sorted(component):
             groups[company] = index
@@ -214,6 +255,11 @@ def hidden_links(
                 # 見 build_company_graph docstring。舊資料（未經 build_company_graph
                 # 重建的圖）沒有這個邊屬性時退回 "B"，不假裝有法人層級的信心。
                 "tier": data.get("tier", "B"),
+                # bridge_only=True：這條關聯只來自機構股東（銀行、政府基金等），
+                # detect_groups 不會拿它合併集團，但仍是行員該看到的證據——
+                # 「兩家公司都有這個機構股東」不等於「這兩家公司是同一個集團」，
+                # 兩者不能混為一談，故用旗標讓前端／行員自行判斷要不要採信。
+                "bridge_only": data.get("bridge_only", False),
             }
         )
     found.sort(key=lambda row: (-row["weight"], row["company_a"], row["company_b"]))

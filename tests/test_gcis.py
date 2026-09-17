@@ -7,9 +7,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from smelens.credit.group import build_company_graph, hidden_links
+from smelens.credit.group import build_company_graph, detect_groups, hidden_links
 from smelens.data.gcis import (
     VACANCY_PLACEHOLDERS,
+    CorporateDirectorEdge,
+    classify_hub_entities,
     corporate_edges_to_affiliations,
     extract_neighborhood,
     load_affiliations,
@@ -17,6 +19,21 @@ from smelens.data.gcis import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "gcis_directors_sample.csv"
+
+
+def _edge(company_id: str, represented_name: str, represented_id: str | None = None):
+    """組一筆最小 CorporateDirectorEdge，供 classify_hub_entities／merge 旗標測試用。
+
+    company_name／representative_person／shares 對這兩組測試無關，填佔位值即可。
+    """
+    return CorporateDirectorEdge(
+        company_id=company_id,
+        company_name=f"{company_id}公司",
+        represented_name=represented_name,
+        represented_id=represented_id,
+        representative_person="某代表人",
+        shares=None,
+    )
 
 
 def test_load_affiliations_drops_vacancy_placeholders():
@@ -72,6 +89,64 @@ def test_corporate_director_edges_are_deduplicated_and_high_confidence():
     affiliations = list(corporate_edges_to_affiliations(edges))
     assert all(a.tier == "A" for a in affiliations)
     assert all(a.role == "法人董事" for a in affiliations)
+
+
+def test_classify_hub_entities_marks_entities_at_or_above_threshold():
+    """代表席次數達門檻的法人才算機構橋接實體，未達門檻的一般控股公司不算。
+
+    銀行（統編 B1）代表出任 5 家公司董事，一般控股公司（統編 H1）只代表
+    出任 3 家——用預設門檻 5 分類，前者應入選、後者不應入選。
+    """
+    edges = [_edge(f"C{i}", "某銀行", represented_id="B1") for i in range(5)]
+    edges += [_edge(f"D{i}", "某控股公司", represented_id="H1") for i in range(3)]
+
+    hubs = classify_hub_entities(edges, seat_threshold=5)
+
+    assert "pid:B1" in hubs
+    assert "pid:H1" not in hubs
+
+
+def test_classify_hub_entities_counts_by_identifier_not_name_string():
+    """同一統編、不同名稱寫法（全半形、簡繁等）的代表法人要合併計數。
+
+    _represented_identity_key 優先用 represented_id 衍生鍵，避免因為名稱字串
+    寫法不同而低估某個法人的實際代表席次數，導致該入選門檻的機構漏網。
+    """
+    edges = [_edge("C1", "某銀行股份有限公司", represented_id="B1")]
+    edges += [_edge(f"C{i}", "某銀行（股）公司", represented_id="B1") for i in range(2, 6)]
+
+    hubs = classify_hub_entities(edges, seat_threshold=5)
+
+    assert "pid:B1" in hubs
+
+
+def test_corporate_edges_to_affiliations_marks_hub_entities_as_non_merging():
+    """機構橋接實體轉出的 Affiliation 一律 merge=False，其餘維持預設 merge=True。"""
+    edges = [_edge(f"C{i}", "某銀行", represented_id="B1") for i in range(5)]
+    edges += [_edge("D1", "某控股公司", represented_id="H1")]
+
+    affiliations = list(corporate_edges_to_affiliations(edges, hub_seat_threshold=5))
+
+    hub_affs = [a for a in affiliations if a.person_id == "B1"]
+    other_affs = [a for a in affiliations if a.person_id == "H1"]
+    assert hub_affs and all(a.merge is False for a in hub_affs)
+    assert other_affs and all(a.merge is True for a in other_affs)
+
+
+def test_hub_entities_bridge_without_merging_groups():
+    """機構橋接實體的邊仍畫進圖裡（bridge_only 標記），但 detect_groups 不會
+    拿它合併兩家公司——這正是全國實測 7,187 家假集團問題的修復核心行為。
+    """
+    edges = [_edge(f"C{i}", "某銀行", represented_id="B1") for i in range(5)]
+    affiliations = list(corporate_edges_to_affiliations(edges, hub_seat_threshold=5))
+
+    graph = build_company_graph(affiliations)
+    for u, v, data in graph.edges(data=True):
+        assert data["bridge_only"] is True
+
+    groups = detect_groups(graph)
+    # 5 家公司唯一的共同點是機構橋接實體，理應各自獨立，不歸同一集團。
+    assert len(set(groups.values())) == 5
 
 
 def test_a_tier_edge_outranks_b_tier_in_hidden_links():
@@ -140,6 +215,34 @@ def test_extract_neighborhood_is_bounded_by_max_companies():
 
     companies = {a.company_id for a in neighborhood}
     assert len(companies) <= 2
+
+
+_A_TIER_NEIGHBORHOOD_CSV = """統一編號,公司名稱,職稱,姓名,所代表法人,持有股份數
+00000001,甲光電股份有限公司,董事,張三,乙投資股份有限公司,1000
+00000002,丙精工股份有限公司,董事,李四,乙投資股份有限公司,2000
+00000003,丁生技股份有限公司,董事,王五,獨立業主股份有限公司,3000
+"""
+
+
+def test_extract_neighborhood_includes_a_tier_corporate_director_edges(tmp_path: Path):
+    """鄰域展開現在會一併納入 A 層（所代表法人）關係，不再只展開 B 層。
+
+    甲光電、丙精工都由「乙投資」派員代表出任董事（A 層、代表席次 2 家，
+    遠低於機構橋接門檻），從甲光電出發 depth=1 應找到丙精工，且該筆
+    Affiliation 須標 tier="A"、merge=True（未達門檻，不是機構橋接）；
+    丁生技與「獨立業主」無其他公司共用，不該被納入鄰域。
+    """
+    csv_path = tmp_path / "a_tier_sample.csv"
+    csv_path.write_text(_A_TIER_NEIGHBORHOOD_CSV, encoding="utf-8-sig")
+
+    neighborhood = extract_neighborhood(csv_path, "00000001", depth=1, max_companies=50)
+
+    companies = {a.company_id for a in neighborhood}
+    assert companies == {"00000001", "00000002"}
+
+    a_tier = [a for a in neighborhood if a.tier == "A"]
+    assert a_tier, "應收集到甲光電、丙精工之間的 A 層關係"
+    assert all(a.merge is True for a in a_tier)
 
 
 def test_extract_neighborhood_rejects_invalid_depth():
