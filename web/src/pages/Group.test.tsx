@@ -5,6 +5,7 @@ import Group from './Group'
 
 vi.mock('../api/client', () => ({
   postGroup: vi.fn(),
+  getGcisGroup: vi.fn(),
   ApiError: class ApiError extends Error {
     constructor(
       public status: number,
@@ -15,12 +16,43 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-const { postGroup, ApiError } = await import('../api/client')
+const { postGroup, getGcisGroup, ApiError } = await import('../api/client')
 const mockedPostGroup = vi.mocked(postGroup)
+const mockedGetGcisGroup = vi.mocked(getGcisGroup)
+
+/** 一詮精密工業的真實查詢結果（與線上 GET /gcis/group 的回應同形狀）。 */
+const GCIS_FIXTURE = {
+  company_id: '35866232',
+  company: '一詮精密工業股份有限公司',
+  group_members: [
+    '一詮精密工業股份有限公司',
+    '世銓科技股份有限公司',
+    '惠智先進股份有限公司',
+    '立誠光電股份有限公司',
+  ],
+  group_size: 4,
+  evidence: [
+    {
+      company: '世銓科技股份有限公司',
+      company_id: '54318252',
+      parent: '一詮精密工業股份有限公司',
+      parent_id: '35866232',
+      role: '法人董事',
+    },
+  ],
+  candidates: [{ company: '世銓科技股份有限公司', person: '王小明' }],
+  elapsed_seconds: 0.23,
+  neighborhood_companies: 128,
+  neighborhood_truncated: false,
+  neighborhood_frontier_remaining: 98,
+  scope: '歸戶僅採 A 層（法人董事）證據，與全國索引一致；B 層只列候選，不合併。',
+  source: '經濟部商業發展署 董監事資料集（政府資料開放授權條款－第 1 版）',
+}
 
 describe('集團歸戶頁', () => {
   beforeEach(() => {
     mockedPostGroup.mockReset()
+    mockedGetGcisGroup.mockReset()
   })
 
   it('把客戶未申報的隱性關聯逐條列出，並點名共用的自然人', async () => {
@@ -127,5 +159,60 @@ describe('集團歸戶頁', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeDefined())
     expect(screen.queryByText(/離線快照/)).toBeNull()
     expect(screen.queryByText(/隱性關聯/)).toBeNull()
+  })
+
+  it('用真實統一編號查詢時，顯示查到的公司、成員名與 A 層證據', async () => {
+    // 斷言的是**內容**而非長度：只驗「有 4 筆」的話，把成員清單換成別家公司
+    // 的名字也照樣綠，而這一頁的全部說服力就在那幾個名字是真的。
+    mockedGetGcisGroup.mockResolvedValue(GCIS_FIXTURE)
+    render(<Group />)
+
+    screen.getByTestId('gcis-submit').click()
+
+    await waitFor(() => expect(screen.getByTestId('gcis-company')).toBeDefined())
+    expect(screen.getByTestId('gcis-company').textContent).toBe('一詮精密工業股份有限公司')
+    expect(screen.getByTestId('gcis-group-size').textContent).toBe('4')
+
+    const members = screen.getByTestId('gcis-members').textContent ?? ''
+    for (const name of GCIS_FIXTURE.group_members) {
+      expect(members).toContain(name)
+    }
+
+    // 預設值就是決賽案例，presenter 不必現場打字
+    expect(screen.getByLabelText(/統一編號/)).toHaveProperty('value', '35866232')
+    // A 層證據要點名母公司，這才是「說出它們的老闆是誰」
+    expect(screen.getByText('法人董事')).toBeDefined()
+    // 適用範圍說明由後端提供並原樣呈現
+    expect(screen.getByTestId('gcis-scope').textContent).toBe(GCIS_FIXTURE.scope)
+  })
+
+  it('後端回 503（示範資料未就緒）時顯示後端訊息，不得退回離線快照', async () => {
+    // 拿示範名冊的快照去冒充「你輸入的統編查到的結果」是給假答案，比報錯更糟。
+    mockedGetGcisGroup.mockRejectedValue(new ApiError(503, '示範資料未就緒：找不到隨附的精簡索引'))
+    render(<Group />)
+
+    screen.getByTestId('gcis-submit').click()
+
+    // 鎖進 role="alert" 的錯誤框：訊息同時也會進 aria-live 播報區，
+    // 用 getByText 會抓到兩個節點而失敗。
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('示範資料未就緒'),
+    )
+    expect(screen.queryByTestId('gcis-company')).toBeNull()
+    expect(screen.queryByTestId('gcis-members')).toBeNull()
+  })
+
+  it('後端回 404（統編不在索引內）時顯示後端訊息，不得退回離線快照', async () => {
+    mockedGetGcisGroup.mockRejectedValue(
+      new ApiError(404, '統一編號 00000000 不在示範索引內（僅含有法人董事關係的公司）'),
+    )
+    render(<Group />)
+
+    screen.getByTestId('gcis-submit').click()
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain('不在示範索引內'),
+    )
+    expect(screen.queryByTestId('gcis-company')).toBeNull()
   })
 })

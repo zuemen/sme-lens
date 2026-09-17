@@ -162,3 +162,28 @@ export interface GroupResult {
   /** 有曝險但不在名冊中的公司；後端刻意列名而非靜默丟棄 */
   unattributed: string[]
 }
+
+/** GET /gcis/group 的回應：用真實統一編號從公開登記資料現場展開的歸戶結果。 */
+export interface GcisGroupResult {
+  company_id: string
+  company: string
+  group_members: string[]
+  group_size: number
+  /** 可作為歸戶依據的 A 層（法人董事）關係；parent 是所代表法人（母公司）。 */
+  evidence: {
+    company: string
+    company_id: string | null
+    parent: string
+    parent_id: string | null
+    role: string
+  }[]
+  /** B 層候選（自然人同名），僅供覆核，不參與合併。 */
+  candidates: { company: string; person: string }[]
+  elapsed_seconds: number
+  neighborhood_companies: number
+  neighborhood_truncated: boolean
+  neighborhood_frontier_remaining: number
+  /** 證據強度與適用範圍的說明，由後端提供，畫面必須原樣呈現。 */
+  scope: string
+  source: string
+}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ApiError, postGroup } from '../api/client'
+import { ApiError, getGcisGroup, postGroup } from '../api/client'
 import { DEMO_ROSTER, GROUP_SNAPSHOT } from '../api/snapshot'
-import type { GroupResult } from '../api/types'
+import type { GcisGroupResult, GroupResult } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
 import { Panel } from '../components/Panel'
 
@@ -14,6 +14,10 @@ const DEMO_EXPOSURES = DEMO_ROSTER.exposures
 function formatTwd(amount: number): string {
   return `${amount.toLocaleString('zh-TW')} 元`
 }
+
+/** 預設查詢的統一編號：一詮精密工業，決賽現場的即席重現案例。
+ *  它的 4 家成員全由 A 層（法人董事）證據支撐，不需要任何附註解釋。 */
+const DEFAULT_COMPANY_ID = '35866232'
 
 /** 客戶申報的獨立集團數（依 declared_groups 的相異值數）。 */
 const DECLARED_GROUP_COUNT = new Set(Object.values(DEMO_DECLARED)).size
@@ -106,6 +110,36 @@ export default function Group() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ── 真實統編查詢（GET /gcis/group）──────────────────────────────
+  // 與上方示範名冊是兩件不同的事，刻意共存在同一頁：上方證明「方法對」
+  // （名冊可控、落差算得出來），這裡證明「資料真」（任意公開登記統編都查得到）。
+  const [companyId, setCompanyId] = useState(DEFAULT_COMPANY_ID)
+  const [gcis, setGcis] = useState<GcisGroupResult | null>(null)
+  const [gcisLoading, setGcisLoading] = useState(false)
+  const [gcisError, setGcisError] = useState<string | null>(null)
+
+  async function runGcis() {
+    setGcisLoading(true)
+    setGcisError(null)
+    setAnnouncement('正在以統一編號查詢公開登記資料…')
+    try {
+      const payload = await getGcisGroup(companyId.trim())
+      setGcis(payload)
+      setAnnouncement(`查得 ${payload.company}，歸戶集團共 ${payload.group_size} 家。`)
+    } catch (err) {
+      // 這一段刻意**不**退回離線快照：離線快照是那份示範名冊的結果，拿它來
+      // 冒充「你輸入的那個統編查到的東西」等於給出假答案——比顯示錯誤更糟。
+      // 503 代表隨附的精簡索引沒進到部署裡（見 vercel.json 的 includeFiles），
+      // 4xx 代表統編格式錯或不在索引內，兩者都要讓人看見真正的原因。
+      setGcis(null)
+      const detail = err instanceof ApiError ? err.detail : '查詢公開登記資料失敗，請稍後再試。'
+      setGcisError(detail)
+      setAnnouncement(`統編查詢失敗：${detail}`)
+    } finally {
+      setGcisLoading(false)
     }
   }
 
@@ -362,6 +396,146 @@ export default function Group() {
           )}
         </div>
       )}
+
+      <Panel title="查真實統一編號（公開登記資料）">
+        <p className="mb-4 max-w-3xl text-sm leading-relaxed text-muted">
+          上方是可控的示範名冊，用來說明方法；這裡直接對<b>全國公司登記資料</b>發問。
+          輸入任何 8 碼統一編號，系統會現場展開它的關係圖並歸戶——名冊不由使用者提供，
+          而是來自經濟部商業發展署的董監事資料集。
+        </p>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="gcis-company-id" className="block text-xs text-muted">
+              統一編號（8 碼）
+            </label>
+            <input
+              id="gcis-company-id"
+              type="text"
+              inputMode="numeric"
+              maxLength={8}
+              value={companyId}
+              onChange={(event) => setCompanyId(event.target.value)}
+              className="tabular mt-1 w-40 rounded border border-line bg-panel px-3 py-2 text-base"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={runGcis}
+            disabled={gcisLoading}
+            data-testid="gcis-submit"
+            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+          >
+            {gcisLoading ? '查詢中…' : '查集團歸戶'}
+          </button>
+        </div>
+
+        {gcisError && (
+          <div className="mt-4">
+            <ErrorNotice message={gcisError} action={{ label: '重試', onClick: runGcis }} />
+          </div>
+        )}
+
+        {gcis && (
+          <div className="mt-6 space-y-5">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-lg border border-line p-4">
+                <div className="text-xs text-muted">查詢對象</div>
+                <div className="mt-1 text-lg font-semibold" data-testid="gcis-company">
+                  {gcis.company}
+                </div>
+                <div className="tabular mt-1 text-xs text-muted">{gcis.company_id}</div>
+              </div>
+              <div className="rounded-lg border border-line p-4">
+                <div className="text-xs text-muted">歸戶集團成員</div>
+                <div className="tabular mt-1 text-4xl font-semibold" data-testid="gcis-group-size">
+                  {gcis.group_size}
+                </div>
+                <div className="mt-1 text-xs text-muted">家</div>
+              </div>
+              <div className="rounded-lg border border-line p-4">
+                <div className="text-xs text-muted">查詢耗時</div>
+                <div className="tabular mt-1 text-4xl font-semibold">{gcis.elapsed_seconds}</div>
+                <div className="mt-1 text-xs text-muted">
+                  秒（展開 {gcis.neighborhood_companies} 家鄰域
+                  {gcis.neighborhood_truncated ? '，已達上限' : ''}）
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold">歸戶集團成員</h3>
+              <ul className="mt-2 list-inside list-disc text-sm" data-testid="gcis-members">
+                {gcis.group_members.map((member) => (
+                  <li key={member}>{member}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold">歸戶證據（A 層：法人董事，無姓名歧義）</h3>
+              <div className="mt-2 overflow-x-auto">
+                <table className="tabular w-full text-left text-sm">
+                  <caption className="sr-only">
+                    集團歸戶的法人董事證據，欄位為公司、所代表法人（母公司）與職稱
+                  </caption>
+                  <thead>
+                    <tr className="border-b border-line text-xs text-muted">
+                      <th scope="col" className="py-2 pr-4">
+                        公司
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        所代表法人（母公司）
+                      </th>
+                      <th scope="col" className="py-2 pr-4">
+                        職稱
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gcis.evidence.map((row, index) => (
+                      <tr
+                        key={`${row.company}-${row.parent}-${index}`}
+                        className="border-b border-line/50"
+                      >
+                        <td className="py-2 pr-4">{row.company}</td>
+                        <td className="py-2 pr-4">{row.parent}</td>
+                        <td className="py-2 pr-4">{row.role}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {gcis.candidates.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold">
+                  B 層候選（自然人同名，{gcis.candidates.length} 筆，不參與合併）
+                </h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted">
+                  公開資料沒有身分證字號，同名不同人必然存在（全台「陳建宏」一個姓名就掛
+                  411 家公司），故這些只是候選，交由銀行以 KYC 既有身分資料解析。
+                </p>
+                <ul className="mt-2 list-inside list-disc text-sm">
+                  {gcis.candidates.slice(0, 12).map((row, index) => (
+                    <li key={`${row.company}-${row.person}-${index}`}>
+                      {row.company}　·　{row.person}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* scope 與 source 由後端提供並原樣呈現：證據強度的適用範圍不該由
+                前端文案自行改寫，兩邊各寫一份就是漂移的開始。 */}
+            <p className="text-xs leading-relaxed text-muted" data-testid="gcis-scope">
+              {gcis.scope}
+            </p>
+            <p className="text-xs leading-relaxed text-muted">資料來源：{gcis.source}</p>
+          </div>
+        )}
+      </Panel>
     </div>
   )
 }

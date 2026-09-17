@@ -186,7 +186,7 @@ def health() -> dict[str, str]:
 READY_SERVICE_NAME = "sme-lens"
 
 #: 前端實際會呼叫、因此必須存在的路徑。少任何一條就代表接錯後端。
-REQUIRED_ROUTES = ("/credit", "/group", "/screen", "/graph")
+REQUIRED_ROUTES = ("/credit", "/group", "/gcis/group", "/screen", "/graph")
 
 
 @app.get("/ready")

@@ -1,5 +1,11 @@
 import { describeError } from './errors'
-import type { CreditOpinion, GroupResult, ScreenResult, WorkbenchPayload } from './types'
+import type {
+  CreditOpinion,
+  GcisGroupResult,
+  GroupResult,
+  ScreenResult,
+  WorkbenchPayload,
+} from './types'
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '')
 
@@ -13,6 +19,17 @@ export class ApiError extends Error {
   }
 }
 
+/** 把非 2xx 回應轉成 ApiError，盡量沿用後端的 detail 文字。 */
+async function raiseForStatus(response: Response): Promise<never> {
+  const detail = await response
+    .json()
+    .then((payload: { detail?: unknown }) =>
+      typeof payload.detail === 'string' ? payload.detail : undefined,
+    )
+    .catch(() => undefined)
+  throw new ApiError(response.status, describeError(response.status, detail))
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   let response: Response
   try {
@@ -24,15 +41,18 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   } catch {
     throw new ApiError(0, describeError(0))
   }
-  if (!response.ok) {
-    const detail = await response
-      .json()
-      .then((payload: { detail?: unknown }) =>
-        typeof payload.detail === 'string' ? payload.detail : undefined,
-      )
-      .catch(() => undefined)
-    throw new ApiError(response.status, describeError(response.status, detail))
+  if (!response.ok) await raiseForStatus(response)
+  return (await response.json()) as T
+}
+
+async function get<T>(path: string): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`)
+  } catch {
+    throw new ApiError(0, describeError(0))
   }
+  if (!response.ok) await raiseForStatus(response)
   return (await response.json()) as T
 }
 
@@ -69,6 +89,14 @@ export function postGroup(body: {
   exposures?: Record<string, number>
 }): Promise<GroupResult> {
   return post<GroupResult>('/group', body)
+}
+
+/** 用真實統一編號查集團歸戶（公開登記資料，非呼叫端自備名冊）。
+ *
+ * 統編在此不做格式檢查——後端已用 pattern ^\d{8}$ 驗，重複一份規則只會讓兩邊
+ * 有機會不一致；呼叫端負責把後端回的 422 訊息顯示出來。 */
+export function getGcisGroup(companyId: string): Promise<GcisGroupResult> {
+  return get<GcisGroupResult>(`/gcis/group?company_id=${encodeURIComponent(companyId)}`)
 }
 
 /** 背景喚醒 serverless 函式。冷啟動實測約 5 秒，趁使用者閱讀時吃掉。

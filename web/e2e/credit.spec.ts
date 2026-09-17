@@ -53,3 +53,35 @@ test('導覽列可從授信意見書走到集團歸戶', async ({ page }) => {
   await page.getByRole('link', { name: '集團歸戶', exact: true }).click()
   await expect(page.getByRole('heading', { name: '集團歸戶' })).toBeVisible()
 })
+
+test('集團歸戶頁可用真實統一編號查公開登記資料', async ({ page }) => {
+  await page.goto('/group')
+
+  // 預設就是決賽即席重現的案例，presenter 不必現場打字。
+  const input = page.getByLabel(/統一編號/)
+  await expect(input).toHaveValue('35866232')
+
+  await page.getByTestId('gcis-submit').click()
+
+  // 這條路徑刻意沒有離線快照可退：查到的必須是真的從公開登記資料展開的結果，
+  // 所以這支測試同時也是「後端與隨附精簡索引都真的在」的驗證。
+  await expect(page.getByTestId('gcis-company')).toHaveText('一詮精密工業股份有限公司', {
+    timeout: 30_000,
+  })
+  await expect(page.getByTestId('gcis-group-size')).toHaveText('4')
+
+  const members = page.getByTestId('gcis-members')
+  for (const name of [
+    '一詮精密工業股份有限公司',
+    '世銓科技股份有限公司',
+    '惠智先進股份有限公司',
+    '立誠光電股份有限公司',
+  ]) {
+    await expect(members).toContainText(name)
+  }
+
+  // A 層證據要點名母公司——「說出它們的老闆是誰」正是這一步的賣點。
+  await expect(page.getByRole('table', { name: /法人董事證據/ })).toContainText(
+    '一詮精密工業股份有限公司',
+  )
+})

@@ -17,7 +17,7 @@ export default defineConfig({
       url: 'http://127.0.0.1:8000/ready',
       cwd: '..',
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      timeout: 300_000,
     },
     {
       // VITE_API_BASE 是 build-time 變數，必須在這個 build 進行時就存在——
@@ -26,7 +26,7 @@ export default defineConfig({
       url: 'http://localhost:4173',
       env: { VITE_API_BASE: API_BASE },
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      timeout: 300_000,
     },
   ],
 })
