@@ -43,6 +43,23 @@ describe('授信意見書頁', () => {
     }
   })
 
+
+  it('頂部三個關鍵欄位顯示的是正確的值，而不只是「畫面上某處有這些字」', async () => {
+    // 稽核實測：把「關注等級」改成顯示英文 label、把「授信關注分數」改成顯示
+    // 交易對手多樣性，這個檔案 16 支測試照樣全綠——因為「關注」在下方節點表格
+    // 也會出現，而 0.82 從未被任何單元測試釘在畫面上。這裡用 data-testid 把
+    // 斷言鎖進該欄位本身，並釘字面值（口白會念的三個數字）。
+    mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
+    render(<Credit />)
+
+    screen.getByRole('button', { name: '產生授信意見書' }).click()
+
+    await waitFor(() => expect(screen.getByTestId('attention-label')).toBeDefined())
+    expect(screen.getByTestId('attention-label').textContent).toBe('關注')
+    expect(screen.getByTestId('attention-score').textContent).toBe('0.82')
+    expect(screen.getByTestId('network-credit').textContent).toBe('0.5667')
+  })
+
   it('圖譜之外必須提供等價的節點表格（網路圖無障礙評級為 D，不能是唯一載體）', async () => {
     mockedPostCredit.mockResolvedValue(CREDIT_SNAPSHOT)
     render(<Credit />)

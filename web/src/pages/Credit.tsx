@@ -34,6 +34,17 @@ const ATTENTION_COLOR_BY_GRAPH_LABEL: Record<string, string> = {
   low: 'var(--color-risk-low)',
 }
 
+/** 取出命中的封閉資金環路徑（首尾相接），供圖譜高亮使用；沒有環時回 undefined。
+ *
+ * 後端回的 nodes 是環上節點的有序清單但不含回到起點的那一段，補上起點才能讓
+ * GraphView 把整個環的每一條邊都標起來——少了最後一段，環會缺一角，而「閉合」
+ * 正是這個圖樣要讓人看見的東西。 */
+function cyclePath(result: CreditOpinion): string[] | undefined {
+  const cycle = result.motif_hits.find((hit) => hit.motif === 'cycle_trade')
+  if (!cycle || cycle.nodes.length === 0) return undefined
+  return [...cycle.nodes, cycle.nodes[0]]
+}
+
 function formatTwd(amount: number): string {
   return `${amount.toLocaleString('zh-TW')} 元`
 }
@@ -174,7 +185,12 @@ export default function Credit() {
       {error && <ErrorNotice message={error} action={{ label: '重試', onClick: run }} />}
 
       {offline && (
-        <ErrorNotice message="目前顯示的是內建離線快照（案例固定為泰昇精密），非即時查詢結果——已標示為離線快照。" />
+        // 案例名稱必須由實際結果帶出：fallback 會依 target 在申請人與對照組
+        // 兩份快照間切換，寫死「泰昇精密」會在切到對照組時當場自打嘴巴——
+        // 而且是在「誠實標示離線快照」這件事上翻車。
+        <ErrorNotice
+          message={`目前顯示的是內建離線快照（案例：${result?.target ?? '—'}），非即時查詢結果——已標示為離線快照。`}
+        />
       )}
 
       {result?.graph.meta.truncated && (
@@ -204,6 +220,7 @@ export default function Credit() {
                 <div className="text-xs text-muted">關注等級</div>
                 <div
                   className="mt-1 text-2xl font-semibold"
+                  data-testid="attention-label"
                   style={{ color: ATTENTION_COLOR[result.label] }}
                 >
                   {result.label_zh}
@@ -213,6 +230,7 @@ export default function Credit() {
                 <div className="text-xs text-muted">授信關注分數</div>
                 <div
                   className="tabular mt-1 text-xl"
+                  data-testid="attention-score"
                   style={{ color: ATTENTION_COLOR[result.label] }}
                 >
                   {result.attention_score.toFixed(2)}
@@ -226,7 +244,9 @@ export default function Credit() {
                     未見收款），沒有「買方結構」可供評估，故不給分數，非評估結果為零。
                   </div>
                 ) : (
-                  <div className="tabular mt-1 text-xl">{result.network_credit.toFixed(4)}</div>
+                  <div className="tabular mt-1 text-xl" data-testid="network-credit">
+                    {result.network_credit.toFixed(4)}
+                  </div>
                 )}
               </div>
             </div>
@@ -298,9 +318,21 @@ export default function Credit() {
             </div>
           </Panel>
 
-          <Panel title="企業關係圖譜（外框標示命中圖樣節點；金框＝申請企業）">
+          <Panel title="企業關係圖譜（橘色路徑＝命中的封閉資金環；金框＝申請企業）">
+            {/* 圖上其他企業的顏色是它們各自的關注等級，不是本次申請企業的評估
+                結果。對照組頁面上最醒目的兩顆紅點是圖中另外兩家問題企業，若不
+                寫明，畫面會直接反駁「這家公司是乾淨的」這句話。 */}
+            <p className="mb-3 text-sm leading-relaxed text-muted">
+              圖譜顯示的是申請企業所在的<b>完整關係圖</b>；其他企業的顏色代表
+              <b>各自的</b>關注等級，非本次申請企業的評估結果。本次評估對象為
+              金框標示的 {result.target}。
+            </p>
             <GraphView
               payload={result.graph}
+              // 循環交易是第二步口白的主角，卻只是一條 1px 深灰邊、在力導向
+              // 佈局上散落各處，投影機上幾乎看不見。後端的 motif_hits 已經帶
+              // 了環上節點的有序清單，直接餵給 highlightPath 即可加粗成橘線。
+              highlightPath={cyclePath(result)}
               focus={result.target}
               layout="cose"
               scheme="role"

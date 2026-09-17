@@ -140,6 +140,12 @@ export interface HiddenLink {
   shared_persons: string[]
   declared_group_a: string | null
   declared_group_b: string | null
+  /** 共用實體數。後端依此由高到低排序後截斷，是「優先看哪幾筆」的依據。 */
+  weight: number
+  /** "A"＝法人董事（無姓名歧義）；"B"＝純姓名比對，只能是候選。 */
+  tier: 'A' | 'B'
+  /** true＝這條關聯只是橋接（機構股東／合資公司），呈現為證據但不作為歸戶依據。 */
+  bridge_only: boolean
 }
 
 export interface GroupResult {

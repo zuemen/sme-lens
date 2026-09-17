@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CREDIT_SNAPSHOT, DEMO_ROSTER, GROUP_SNAPSHOT, SCREENING_SNAPSHOT } from './snapshot'
+import {
+  CREDIT_CONTROL_SNAPSHOT,
+  CREDIT_SNAPSHOT,
+  DEMO_ROSTER,
+  GROUP_SNAPSHOT,
+  SCREENING_SNAPSHOT,
+} from './snapshot'
 
 /**
  * 快照是現場演示唯一的離線保險（見 Screening.tsx 的 offline fallback），
@@ -68,6 +74,11 @@ describe('CREDIT_SNAPSHOT 形狀驗證', () => {
 
   it('授信關注分數與演示口白一致（0.82）', () => {
     expect(CREDIT_SNAPSHOT.attention_score).toBe(0.82)
+  })
+
+  it('網絡信用分與建議文字與演示口白一致', () => {
+    expect(CREDIT_SNAPSHOT.network_credit).toBe(0.5667)
+    expect(CREDIT_SNAPSHOT.recommendation_zh).toContain('建議暫緩核貸')
   })
 
   it('命中的企金風險圖樣種類與演示口白一致（封閉資金環、買方集中）', () => {
@@ -149,5 +160,29 @@ describe('DEMO_ROSTER 與 GROUP_SNAPSHOT 一致性', () => {
         expect(companiesForPerson.has(link.company_b)).toBe(true)
       }
     }
+  })
+})
+
+/**
+ * CREDIT_CONTROL_SNAPSHOT（對照組禾昌五金）原本一個斷言都沒有，但第 4 步
+ * 口白要念的 0.06、0.7078、「命中 0 個圖樣」全靠它。對照組的說服力來自
+ * 「同一套系統對乾淨的公司不開火」——這幾個數字若悄悄漂掉，翻的是整段論證。
+ */
+describe('CREDIT_CONTROL_SNAPSHOT 形狀驗證', () => {
+  it('對照組是禾昌五金，且判定為正常', () => {
+    expect(CREDIT_CONTROL_SNAPSHOT.target).toBe('禾昌五金')
+    expect(CREDIT_CONTROL_SNAPSHOT.label).toBe('normal')
+    expect(CREDIT_CONTROL_SNAPSHOT.label_zh).toBe('正常')
+  })
+
+  it('關注分數低、網絡信用分高，且一個風險圖樣都沒命中', () => {
+    // 畫面以 toFixed(2) 顯示為 0.06，口白稿須與畫面一致（見 docs/DEMO_SCRIPT.md）。
+    expect(CREDIT_CONTROL_SNAPSHOT.attention_score).toBe(0.0584)
+    expect(CREDIT_CONTROL_SNAPSHOT.network_credit).toBe(0.7078)
+    expect(CREDIT_CONTROL_SNAPSHOT.motif_hits).toHaveLength(0)
+  })
+
+  it('建議是依既有條件辦理，不是任何形式的婉拒', () => {
+    expect(CREDIT_CONTROL_SNAPSHOT.recommendation_zh).toContain('依既有授信條件辦理')
   })
 })

@@ -17,7 +17,9 @@
       ],
       "declared_group_a": "昇泰集團",
       "declared_group_b": "泰昇集團",
-      "weight": 1
+      "weight": 1,
+      "tier": "B",
+      "bridge_only": false
     }
   ],
   "hidden_links_total": 1,
