@@ -48,6 +48,25 @@ await page.getByTestId('gcis-scope').scrollIntoViewIfNeeded()
 await page.screenshot({ path: resolve(shotDir, 'live-gcis-group.png'), fullPage: false })
 console.log(`截圖：${resolve(shotDir, 'live-gcis-group.png')}`)
 
+// ── 貸後早期預警 ──────────────────────────────────────────
+await page.goto(`${base}/earlywarn`, { waitUntil: 'networkidle' })
+await page.getByTestId('earlywarn-submit').click()
+await page.getByTestId('warn-count').waitFor({ timeout: 60_000 })
+
+const warnCount = (await page.getByTestId('warn-count').textContent())?.trim()
+check('關注名單 6 筆', warnCount === '6', warnCount)
+
+const warnExposure = (await page.getByTestId('warn-exposure').textContent())?.trim()
+check('受影響曝險 96,000,000', warnExposure === '96,000,000', warnExposure)
+
+const warnTable = (await page.getByTestId('warn-table').textContent()) ?? ''
+check('名單含證據路徑', warnTable.includes('宏益企業 → 泰昇精密'))
+// 一份把全圖都列進來的關注名單等於沒有名單——對照組必須不在上面。
+check('對照組未被誤殺', !warnTable.includes('禾昌五金'))
+
+await page.screenshot({ path: resolve(shotDir, 'live-earlywarn.png'), fullPage: false })
+console.log(`截圖：${resolve(shotDir, 'live-earlywarn.png')}`)
+
 await browser.close()
 
 if (problems.length > 0) {
