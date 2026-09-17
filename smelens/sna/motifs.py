@@ -20,6 +20,11 @@ class MotifHit:
     center: Any
     nodes: list[Any] = field(default_factory=list)
     description_zh: str = ""
+    #: 圖樣的關鍵量值（例如循環交易的「環上最小金額」），供需要改寫敘事的
+    #: 呼叫端重組句子時取用。description_zh 是給人看的完整句子，一旦被改寫
+    #: 成以其他主詞開頭，句中的數字就會連帶掉失——授信人員覆核循環開票第一
+    #: 件事就是看金額量級，那個數字不能因為換了主詞就不見。
+    metrics: dict[str, str] = field(default_factory=dict)
 
 
 def _max_distinct_in_window(

@@ -29,12 +29,16 @@
 from __future__ import annotations
 
 import csv
+import gzip
 import hashlib
+import os
+import shutil
 import sqlite3
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from smelens.credit.group import Affiliation, normalise_name
 
@@ -508,14 +512,40 @@ def build_index(
     return db_path
 
 
+#: 精簡索引（scripts/build_demo_extract.py）額外攜帶的自然人席次表名稱。
+#: 全國索引沒有這張表，_seat_counts 會退回就地聚合——兩者結果相同。
+PERSON_SEAT_TABLE = "person_seats"
+
+
+def _has_table(conn: sqlite3.Connection, name: str) -> bool:
+    """索引檔裡是否存在指定資料表。"""
+    cur = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (name,))
+    return cur.fetchone() is not None
+
+
 def _seat_counts(conn: sqlite3.Connection, column: str, values: set[str]) -> dict[str, int]:
     """查詢 column 欄位在 values 集合內各值的相異公司數（席次數）。
 
     column 只會是內部固定的 "person_norm" 或 "represented_norm"，不是使用者
     輸入，字串組 SQL 不構成注入風險。
+
+    自然人席次（person_norm）另有一條路徑：精簡索引只保留「A 層宇宙」內公司
+    的列（見 scripts/build_demo_extract.py），就地聚合會低估自然人席次，樞紐
+    姓名因此濾不掉、BFS 會沿著菜市場名過度展開。故精簡索引另帶一張由全國
+    資料算好的 person_seats 表，存在時優先採用；全國索引沒有這張表，走原本
+    的就地聚合，兩者結果一致。represented_norm（法人席次）不需要這道處理：
+    精簡索引保留了全部 A 層列，法人席次本來就是精確的。
     """
     if not values:
         return {}
+    if column == "person_norm" and _has_table(conn, PERSON_SEAT_TABLE):
+        placeholders = ",".join("?" * len(values))
+        cur = conn.execute(
+            f"SELECT person_norm, seats FROM {PERSON_SEAT_TABLE} "
+            f"WHERE person_norm IN ({placeholders})",
+            tuple(values),
+        )
+        return dict(cur.fetchall())
     placeholders = ",".join("?" * len(values))
     cur = conn.execute(
         f"SELECT {column}, COUNT(DISTINCT company_id) FROM rows "
@@ -545,6 +575,36 @@ def _coinvestee_director_counts(conn: sqlite3.Connection, company_ids: set[str])
         tuple(company_ids),
     )
     return dict(cur.fetchall())
+
+
+#: 隨 repo 一起發佈的精簡索引（gzip）。全國 CSV 與完整索引都太大，無法進
+#: 版控也無法上雲端函式；這份由 scripts/build_demo_extract.py 產生，內容與
+#: 取捨見該腳本說明。
+DEMO_INDEX_GZ = Path(__file__).resolve().parents[2] / "data" / "demo" / "gcis_a_tier.sqlite.gz"
+
+
+def demo_index_path(cache_dir: Path | None = None) -> Path:
+    """把隨 repo 發佈的精簡索引解壓到快取目錄，回傳可直接連線的 SQLite 路徑。
+
+    解壓一次就好，之後沿用；先解到暫存檔再 rename，避免同時有多個請求進來時
+    讀到寫到一半的檔案（serverless 冷啟動常見）。快取目錄預設 data/cache，可
+    用 SMELENS_CACHE_DIR 覆寫成雲端函式唯一可寫的 /tmp。
+
+    找不到隨附索引時丟 FileNotFoundError，由呼叫端決定要回什麼錯誤——不要
+    退回去讀 119MB 的原始 CSV，那在雲端環境根本不存在。
+    """
+    if not DEMO_INDEX_GZ.exists():
+        raise FileNotFoundError(f"找不到隨附的精簡索引：{DEMO_INDEX_GZ}")
+    base = Path(cache_dir) if cache_dir else Path(os.getenv("SMELENS_CACHE_DIR", "data/cache"))
+    target = base / "gcis_a_tier.sqlite"
+    if target.exists():
+        return target
+    base.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + f".unpacking{os.getpid()}")
+    with gzip.open(DEMO_INDEX_GZ, "rb") as src, open(tmp, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    tmp.replace(target)
+    return target
 
 
 def extract_neighborhood(
@@ -596,6 +656,49 @@ def extract_neighborhood(
     hidden_links 看到，只是不當作合併依據。
 
     max_companies 是鄰域公司數上限，達到後停止展開（即使 depth 還沒走完）。
+    """
+    if depth < 1:
+        raise ValueError("depth 至少為 1")
+
+    affiliations, _ = extract_neighborhood_with_meta(
+        csv_path,
+        root_company_id,
+        depth=depth,
+        max_companies=max_companies,
+        hub_name_threshold=hub_name_threshold,
+        hub_seat_threshold=hub_seat_threshold,
+        coinvestee_director_threshold=coinvestee_director_threshold,
+        db_path=db_path,
+    )
+    return affiliations
+
+
+def extract_neighborhood_with_meta(
+    csv_path: str | Path,
+    root_company_id: str,
+    *,
+    depth: int = 2,
+    max_companies: int = 300,
+    hub_name_threshold: int = 20,
+    hub_seat_threshold: int = DEFAULT_HUB_SEAT_THRESHOLD,
+    coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
+    db_path: str | Path | None = None,
+) -> tuple[list[Affiliation], dict[str, Any]]:
+    """同 extract_neighborhood，但一併回傳展開過程的 meta。
+
+    為什麼需要：BFS 達到 max_companies 時直接停止展開，而留下哪些公司只取決
+    於 SQL 回列順序，與相關性無關。回一個普通的 list 等於讓呼叫端把一份被任
+    意砍過的鄰域當成完整答案——本專案在 /group 對同一個問題處理得很好（回
+    hidden_links_total 與 truncated，註解寫明「截斷本身不算隱瞞，但若不同時
+    回報原本有多少筆，回應會讓人誤以為只找到這麼多」），這條路徑必須遵守
+    同一個標準。
+
+    meta 欄位：visited_companies（實際展開到的公司數）、max_companies（當次
+    上限）、truncated（是否達上限）、frontier_remaining（停止時還有多少家在
+    邊界上沒展開）。
+
+    extract_neighborhood 仍保留原簽章供既有呼叫端使用；需要誠實呈現截斷狀態
+    的呼叫端（API 回應）用這一個。
     """
     if depth < 1:
         raise ValueError("depth 至少為 1")
@@ -751,7 +854,7 @@ def _bfs_neighborhood(
     hub_name_threshold: int,
     hub_seat_threshold: int,
     coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
-) -> list[Affiliation]:
+) -> tuple[list[Affiliation], dict[str, Any]]:
     visited: set[str] = {root_company_id}
     frontier: set[str] = {root_company_id}
     collected: list[Affiliation] = []
@@ -816,4 +919,11 @@ def _bfs_neighborhood(
             coinvestee_director_threshold,
         )
 
-    return collected
+    return collected, {
+        "visited_companies": len(visited),
+        "max_companies": max_companies,
+        # 「還有邊界沒展開」與「已達公司數上限」兩件事都要看：前者代表 depth
+        # 用完，後者代表被上限砍斷。任一成立，這份鄰域就不是完整的。
+        "truncated": len(visited) >= max_companies,
+        "frontier_remaining": len(frontier),
+    }

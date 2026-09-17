@@ -182,7 +182,45 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     for _, _, data in g.edges(data=True):
         data["shared"].sort()
 
-    return nx.relabel_nodes(g, company_display)
+    return nx.relabel_nodes(g, _disambiguated_display(company_display))
+
+
+def _disambiguated_display(company_display: dict[str, str]) -> dict[str, str]:
+    """把節點鍵→顯示名稱的對照修成單射，撞名者一律加上識別碼後綴。
+
+    為什麼非做不可：relabel_nodes(copy=True) 在兩個鍵映到同一個名字時會**靜默
+    把兩個節點併成一個**——兩家不同統一編號、只是名字正規化後相同的公司，會
+    在歸戶結果裡變成一家，其中一家的曝險就此消失，而 /group 的 unattributed
+    機制完全偵測不到（它比對的是名稱，名稱明明在）。本模組花了整段篇幅防「同名
+    不同人」，同名不同公司是它的鏡像，而公司才是歸戶的主體。
+
+    台灣公司名稱在去掉組織型態後綴、不同縣市之間撞名相當常見。全國實測顯示，
+    修正前後的多公司群組數從 19,129 變成 19,150，最大群組不變——差額就是原本
+    被靜默併掉的撞名公司。
+
+    修法刻意選擇「加後綴」而非「改用識別碼當節點鍵」：下游（API 回應、曝險比對、
+    隱性關聯清單、前端表格）全部把節點鍵當公司顯示名稱使用，換鍵是破壞性變更；
+    加後綴只在真的撞名時改變輸出，且改變的方式對授信人員是有意義的——他看到的
+    是「台灣工業（12345678）」，正好是他分辨兩家同名公司需要的那個東西。
+    """
+    seen: dict[str, list[str]] = {}
+    for key, name in company_display.items():
+        seen.setdefault(name, []).append(key)
+    resolved: dict[str, str] = {}
+    for key, name in company_display.items():
+        identified = [k for k in seen[name] if k.startswith("cid:")]
+        if len(identified) <= 1:
+            # 同一個名字最多只對到一個統一編號時，沒有歧義：可能是單純只有一個
+            # 節點，也可能是同一家公司有些列帶統編、有些列沒有（董監事資料集
+            # 允許無統編列）。後者本來就該合併成同一家公司，維持原行為。
+            resolved[key] = name
+            continue
+        # 兩個以上不同統編共用同一個名字，就是真正的撞名，必須分開。
+        if key.startswith("cid:"):
+            resolved[key] = f"{name}（{key.split(':', 1)[1]}）"
+        else:
+            resolved[key] = f"{name}（未提供統編）"
+    return resolved
 
 
 def detect_groups(company_graph: nx.Graph) -> dict[str, int]:

@@ -70,6 +70,7 @@ def detect_cycle_trade(
                     f"（{path_zh}，環上最小金額 {min_amount_zh}），"
                     "符合循環交易／資金迴流圖樣。"
                 ),
+                metrics={"min_amount_zh": min_amount_zh},
             )
         )
     return hits

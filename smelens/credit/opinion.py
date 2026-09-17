@@ -37,8 +37,13 @@ def _motif_sentence(node: Any, hit: Any) -> str:
         start = hit.nodes.index(node)
         ordered = hit.nodes[start:] + hit.nodes[:start]
         path_zh = " → ".join(str(n) for n in [*ordered, node])
+        # 金額必須跟著改寫後的句子一起帶走。原本重述時只留路徑，於是招牌那份
+        # 意見書（申請人泰昇精密正好不是 center）的循環交易證據裡沒有金額，
+        # 同一份回應裡別家公司有、主角沒有，看起來像資料缺漏。
+        min_amount_zh = hit.metrics.get("min_amount_zh")
+        amount_clause = f"，環上最小金額 {min_amount_zh}" if min_amount_zh else ""
         return (
-            f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}），"
+            f"本公司位於長度 {len(hit.nodes)} 的封閉資金環（{path_zh}{amount_clause}），"
             "符合循環交易／資金迴流圖樣"
         )
     # 其餘情形 center 就是本公司，把「節點 X」改寫為「本公司」——「節點」是圖論
@@ -73,7 +78,7 @@ def run_sme_pipeline(g: nx.DiGraph) -> PipelineResult:
     return sna_df, partition, risk_ratios, motif_hits
 
 
-def counterparty_diversity(g: nx.DiGraph, node: Any) -> float:
+def counterparty_diversity(g: nx.DiGraph, node: Any) -> float | None:
     """交易對手多樣性（0–1）：買方金額分布的正規化熵。
 
     單一買方 → 0；n 個買方平均分攤 → 1。無收入者回傳 0。
@@ -90,7 +95,12 @@ def counterparty_diversity(g: nx.DiGraph, node: Any) -> float:
         amounts[u] = amounts.get(u, 0.0) + max(float(data.get("amount", 0.0)), 0.0)
     total = sum(amounts.values())
     if total <= 0:
-        return 0.0
+        # 「沒有收入可看」與「收入全部來自單一買方」是兩件完全不同的事：前者
+        # 無從評估，後者是客戶集中度最高、風險最大的情形。早期兩者都回 0.0，
+        # 於是招牌劇本裡四家有實際收入的公司（含空殼過水主角宏益企業）被寫成
+        # 「無足以評估買方結構的收入紀錄」，與同一段話裡的「本公司流入
+        # 6,000,000」直接矛盾。立場與 network_credit 一致：未定義不是零。
+        return None
     shares = [amount / total for amount in amounts.values() if amount > 0]
     if len(shares) < 2:
         return 0.0
@@ -127,7 +137,12 @@ def network_credit(g: nx.DiGraph, node: Any, sna_df: pd.DataFrame) -> float | No
         for column in sna_df.columns
     }
     centrality = sum(percentiles.values()) / len(percentiles)
-    return round(0.5 * centrality + 0.5 * counterparty_diversity(g, node), 4)
+    diversity = counterparty_diversity(g, node)
+    if diversity is None:
+        # in_degree > 0 但所有金額皆為 0（或負數被夾成 0）：有對手方、沒有可
+        # 評估的收入結構，與 in_degree == 0 同樣屬於不可評估，不是最低分。
+        return None
+    return round(0.5 * centrality + 0.5 * diversity, 4)
 
 
 def generate_credit_opinion(
@@ -206,8 +221,10 @@ def generate_credit_opinion(
         narrative.append(f"命中企金風險圖樣：{sentences}。")
     else:
         narrative.append("未命中任何企金風險圖樣。")
-    if diversity == 0.0:
+    if diversity is None:
         narrative.append("本公司於本圖中無足以評估買方結構的收入紀錄。")
+    elif diversity == 0.0:
+        narrative.append("本公司收入全部來自單一買方，客戶集中度風險最高。")
     else:
         narrative.append(
             f"交易對手多樣性 {diversity:.2f}"

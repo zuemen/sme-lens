@@ -189,3 +189,108 @@ def test_hidden_links_sentinel_cannot_be_spoofed():
 
     assert len(found) == 1
     assert found[0]["shared_persons"] == ["王小明"]
+
+
+def test_same_name_different_company_ids_stay_separate():
+    """兩家同名但不同統一編號的公司不得被併成一個節點。
+
+    build_company_graph 內部以識別碼當節點鍵，最後才 relabel 回顯示名稱。
+    relabel_nodes(copy=True) 在兩個鍵映到同一個名字時會靜默併成一個節點，
+    一家公司的邊全部接到另一家身上、曝險就此消失，而 /group 的 unattributed
+    偵測不到（它比對名稱，名稱明明在）。本模組嚴防「同名不同人」，同名不同
+    公司是它的鏡像，而公司才是歸戶的主體。
+    """
+    affiliations = [
+        Affiliation("台灣工業", "甲", role="董事", company_id="A1", person_id="P1"),
+        Affiliation("台灣工業", "乙", role="董事", company_id="A2", person_id="P2"),
+        Affiliation("丙公司", "甲", role="董事", company_id="B1", person_id="P1"),
+    ]
+
+    groups = detect_groups(build_company_graph(affiliations))
+
+    assert len(groups) == 3
+    assert sorted(groups) == ["丙公司", "台灣工業（A1）", "台灣工業（A2）"]
+    # 只有 A1 與丙公司共用「甲」，A2 不得被拖進同一個集團。
+    assert groups["台灣工業（A1）"] == groups["丙公司"]
+    assert groups["台灣工業（A2）"] != groups["丙公司"]
+
+
+def test_same_name_with_and_without_company_id_still_merges():
+    """同一個名字只對到一個統編時不加後綴——帶統編與不帶統編的列是同一家公司。
+
+    董監事資料集允許無統編列。若對這種情形也加後綴，會把同一家公司拆成兩個
+    節點，比原本的問題更糟。撞名的定義是「兩個以上不同統編共用同一個名字」。
+    """
+    affiliations = [
+        Affiliation("甲公司", "王小明", role="董事"),
+        Affiliation("甲公司", "李大牛", role="監察人", company_id="C1", person_id="P9"),
+    ]
+
+    groups = detect_groups(build_company_graph(affiliations))
+
+    assert sorted(groups) == ["甲公司"]
+
+
+def test_hidden_links_returns_the_most_shared_pairs_first():
+    """截斷前必須先依共用人數由高到低排序——否則回傳的是最不可疑的那些。
+
+    /group 把 hidden_links 截到 200 筆並回 truncated=true。排序若反轉，
+    回應的形狀完全正常（長度對、total 對、旗標對），內容卻正好相反。
+    原先僅有的測試只驗長度與 total，改壞排序後 187 項測試全綠。
+    """
+    affiliations = [
+        # 甲—乙 共用 3 人、丙—丁 共用 2 人、戊—己 共用 1 人
+        *[Affiliation(c, f"三人{i}", role="董事") for i in range(3) for c in ("甲", "乙")],
+        *[Affiliation(c, f"兩人{i}", role="董事") for i in range(2) for c in ("丙", "丁")],
+        *[Affiliation(c, "一人", role="董事") for c in ("戊", "己")],
+    ]
+    g = build_company_graph(affiliations)
+
+    top_two = hidden_links(g, {}, limit=2)
+
+    assert [row["weight"] for row in top_two] == [3, 2]
+    assert {top_two[0]["company_a"], top_two[0]["company_b"]} == {"甲", "乙"}
+    assert {top_two[1]["company_a"], top_two[1]["company_b"]} == {"丙", "丁"}
+
+
+def test_hidden_links_ties_break_on_company_names():
+    """共用人數相同時以公司名排序決勝，確保結果穩定可重現。"""
+    affiliations = [
+        *[Affiliation(c, "共用甲", role="董事") for c in ("乙公司", "丙公司")],
+        *[Affiliation(c, "共用乙", role="董事") for c in ("丁公司", "戊公司")],
+    ]
+    g = build_company_graph(affiliations)
+
+    rows = hidden_links(g, {})
+
+    pairs = [(r["company_a"], r["company_b"]) for r in rows]
+    assert len(pairs) == 2
+    assert pairs == sorted(pairs)
+
+
+def test_a_tier_is_not_downgraded_by_a_later_b_tier_row():
+    """同一個 person_id 先 A 後 B（或反序）時，信心一律以 A 為準。
+
+    build_company_graph 明文寫著這條抗混報規則，但拆掉守衛後 187 項測試全綠。
+    真實資料會發生：母公司自身列標 tier="A"、同名自然人列標 tier="B"。
+    """
+    for order in ("A 先", "B 先"):
+        rows = [
+            Affiliation("甲", "共用實體", company_id="C1", person_id="P1", tier="A"),
+            Affiliation("乙", "共用實體", company_id="C2", person_id="P1", tier="B"),
+        ]
+        affiliations = rows if order == "A 先" else list(reversed(rows))
+
+        found = hidden_links(build_company_graph(affiliations), {})
+
+        assert [row["tier"] for row in found] == ["A"], order
+
+
+def test_group_exposure_normalises_company_names():
+    """曝險比對必須正規化公司名——行員從 Excel 貼上的名稱常帶尾隨空白。
+
+    原先唯一相關的測試只斷言 /group 的 unattributed，而 unattributed 在
+    API 層有自己獨立的 normalise_name 呼叫，故 group_exposure 這一行壞掉時
+    它照樣綠：曝險被靜默歸零，unattributed 卻說一切正常。
+    """
+    assert group_exposure({"甲公司": 0}, {"甲公司 ": 100.0}) == {0: 100.0}

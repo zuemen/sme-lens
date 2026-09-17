@@ -278,9 +278,18 @@ export default function Credit() {
             <div className="mt-4 grid grid-cols-2 gap-4">
               <div>
                 <div className="text-xs text-muted">交易對手多樣性</div>
-                <div className="tabular mt-1 text-lg">
-                  {result.counterparty_diversity.toFixed(4)}
-                </div>
+                {result.counterparty_diversity === null ? (
+                  <div className="mt-1 text-sm leading-relaxed text-muted">
+                    未評估——本公司在此關係圖中無被觀察到的收入，沒有買方結構可供評估。
+                  </div>
+                ) : (
+                  <div className="tabular mt-1 text-lg">
+                    {result.counterparty_diversity.toFixed(4)}
+                    {result.counterparty_diversity === 0 ? (
+                      <span className="ml-2 text-xs text-muted">收入全部來自單一買方</span>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-xs text-muted">社群風險比例</div>

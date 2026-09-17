@@ -71,16 +71,30 @@ export function postGroup(body: {
   return post<GroupResult>('/group', body)
 }
 
-/** 背景喚醒 serverless 函式。冷啟動實測約 5 秒，趁使用者閱讀時吃掉。 */
+/** 背景喚醒 serverless 函式。冷啟動實測約 5 秒，趁使用者閱讀時吃掉。
+ *
+ * 打 /ready 而非 /health：所有路徑都由同一個 serverless function 承接
+ * （見 repo 根目錄 vercel.json 的 rewrite），暖一條就等於暖全部，而 /ready
+ * 順帶驗證接的是不是正確的後端。 */
 export function warmUp(): void {
-  void fetch(`${API_BASE}/health`).catch(() => undefined)
+  void fetch(`${API_BASE}/ready`).catch(() => undefined)
 }
 
-/** 分析服務是否可用，供首頁的即時狀態指示使用。 */
+/** 分析服務是否可用，供首頁的即時狀態指示使用。
+ *
+ * 刻意不只看 HTTP 狀態碼：/health 回 200 不代表這個站台是 sme-lens 後端。
+ * 實際踩過兩次——指向舊的 ChainLens 部署時 /health 是 200 但 /credit 與
+ * /group 是 404；VITE_API_BASE 沒設時請求會打到前端自己的靜態站台，拿回
+ * index.html 一樣 ok。故要求回應必須是 sme-lens 的 /ready 且企金端點齊備，
+ * 否則一律當作未就緒——寧可誤報紅燈，也不要讓失敗留到台上按下按鈕才爆。 */
 export async function checkHealth(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/health`)
-    return response.ok
+    const response = await fetch(`${API_BASE}/ready`)
+    if (!response.ok) return false
+    const body: unknown = await response.json()
+    if (typeof body !== 'object' || body === null) return false
+    const payload = body as { service?: unknown; ready?: unknown }
+    return payload.service === 'sme-lens' && payload.ready === true
   } catch {
     return false
   }

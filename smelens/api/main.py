@@ -23,13 +23,14 @@ from __future__ import annotations
 import math
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Any, Literal
 
 import httpx
 import networkx as nx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +49,11 @@ from smelens.credit.group import (
 )
 from smelens.credit.opinion import generate_credit_opinion, run_sme_pipeline
 from smelens.data import elliptic, scenario, sme_scenario, tron
+from smelens.data.gcis import (
+    DEMO_INDEX_GZ,
+    demo_index_path,
+    extract_neighborhood_with_meta,
+)
 from smelens.explain.evidence import PipelineResult, generate_evidence, run_pipeline
 from smelens.explain.screening import screen_withdrawal
 
@@ -170,6 +176,34 @@ def favicon() -> Response:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+#: 前端狀態指示與暖機必須確認「這個 API 是 sme-lens、而且企金端點真的在」。
+#: 只打 /health 驗不出兩種實際發生過的失敗：(1) VITE_API_BASE 指向舊的
+#: ChainLens 部署——/health 回 200，/credit 與 /group 卻 404；(2) VITE_API_BASE
+#: 沒設，fetch("/health") 打到前端自己的靜態站台，拿回 index.html 且
+#: response.ok 為 true。兩種情況首頁都會亮綠燈，失敗要等到台上按下按鈕才爆。
+READY_SERVICE_NAME = "sme-lens"
+
+#: 前端實際會呼叫、因此必須存在的路徑。少任何一條就代表接錯後端。
+REQUIRED_ROUTES = ("/credit", "/group", "/screen", "/graph")
+
+
+@app.get("/ready")
+def ready() -> dict[str, Any]:
+    """回報服務身分與必要路徑是否齊備，供前端狀態指示與暖機使用。
+
+    routes 由 app.routes 現場讀取而非寫死清單——寫死的清單會在端點被改名或
+    移除後繼續回報「齊備」，那正是這個端點要防的事。
+    """
+    available = {getattr(route, "path", "") for route in app.routes}
+    missing = [path for path in REQUIRED_ROUTES if path not in available]
+    return {
+        "service": READY_SERVICE_NAME,
+        "ready": not missing,
+        "routes": sorted(p for p in REQUIRED_ROUTES if p in available),
+        "missing": missing,
+    }
 
 
 def _evidences_for(
@@ -371,12 +405,15 @@ class AffiliationInput(BaseModel):
     決定這件事，是否合併由呼叫方依資料信心自行標註。
     """
 
-    company: str
-    person: str
-    role: str = "董監事"
-    company_id: str | None = None
-    person_id: str | None = None
-    tier: str = "B"
+    # 長度上限與 affiliations 的 max_length=500 同一個用意：這些字串會原樣
+    # 回流到回應（歸戶鍵、隱性關聯清單），不設限等於讓單一請求撐出任意大的
+    # 回應。128 字元遠超過任何真實公司名或姓名。
+    company: str = Field(max_length=128)
+    person: str = Field(max_length=128)
+    role: str = Field(default="董監事", max_length=64)
+    company_id: str | None = Field(default=None, max_length=64)
+    person_id: str | None = Field(default=None, max_length=64)
+    tier: Literal["A", "B"] = "B"
     merge: bool = True
 
 
@@ -389,11 +426,13 @@ class GroupRequest(BaseModel):
     affiliations: list[AffiliationInput] = Field(
         description="公司—自然人關係名冊", max_length=500
     )
+    # 這兩個 dict 原本沒有筆數上限，而 affiliations 有——同一個請求的三個欄位
+    # 標準不一致，等於防護開了門沒關窗。
     declared_groups: dict[str, str] = Field(
-        default_factory=dict, description="客戶自行申報的集團代號"
+        default_factory=dict, description="客戶自行申報的集團代號", max_length=1000
     )
     exposures: dict[str, float] = Field(
-        default_factory=dict, description="各公司授信餘額（新台幣元）"
+        default_factory=dict, description="各公司授信餘額（新台幣元）", max_length=1000
     )
 
     @field_validator("exposures")
@@ -486,9 +525,102 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
     hidden_links_total = len(all_hidden_links)
     return {
         "groups": groups,
-        "exposures": {str(gid): amount for gid, amount in totals.items()},
+        # 依集團編號排序：totals 的插入順序來自請求 JSON 裡 exposures 的欄位
+        # 順序，不是集團編號。groups 本身已做決定性排序（見 detect_groups），
+        # 曝險表卻漏了同一份處理，會出現「集團 #2 排在 #0 前面」的視覺跳動，
+        # 而且換個請求欄位順序畫面就變——現場看起來像資料變了。
+        "exposures": {str(gid): totals[gid] for gid in sorted(totals)},
         "hidden_links": all_hidden_links[:DEFAULT_HIDDEN_LINKS_LIMIT],
         "hidden_links_total": hidden_links_total,
         "truncated": hidden_links_total > DEFAULT_HIDDEN_LINKS_LIMIT,
         "unattributed": unattributed,
+    }
+
+#: /gcis/group 的鄰域展開上限。與 extract_neighborhood 的預設一致，明寫在
+#: 這裡是因為回應會把它report 出去——授信人員看到的群組若因上限而截斷，
+#: 必須看得到這件事，不能只看到一個像是完整答案的清單。
+GCIS_MAX_COMPANIES = 300
+
+
+@app.get("/gcis/group")
+def gcis_group(
+    company_id: str = Query(
+        min_length=8,
+        max_length=8,
+        pattern=r"^\d{8}$",
+        description="八位數統一編號",
+    ),
+    x_api_key: str | None = Header(default=None),
+) -> dict[str, Any]:
+    """用真實統一編號查集團歸戶——資料來源是隨 repo 發佈的精簡登記索引。
+
+    與 POST /group 的差別：POST /group 由呼叫端自備名冊（銀行接自己的 KYC
+    資料時走這條）；本端點是公開 Demo 用，名冊由公開登記資料現場展開。
+
+    線上版帶的是精簡索引（見 scripts/build_demo_extract.py）：A 層列一筆不
+    少，故歸戶結果與全國索引在抽樣驗證下 100/101 家逐字相同；B 層候選清單
+    會比全國版少，這點寫在回應的 scope 欄位裡，不靠說明文件解釋。
+    """
+    _check_api_key(x_api_key)
+    try:
+        db_path = demo_index_path()
+    except FileNotFoundError as exc:  # pragma: no cover - 部署缺檔時才會走到
+        raise HTTPException(status_code=503, detail=f"示範資料未就緒：{exc}") from exc
+
+    started = time.perf_counter()
+    affiliations, meta = extract_neighborhood_with_meta(
+        # csv_path 在索引已存在時不會被讀取（見 gcis.build_index）；雲端環境
+        # 沒有這份 119MB 原始檔，傳的是它在本機的慣用位置，只作為來源標示。
+        DEMO_INDEX_GZ,
+        company_id,
+        db_path=db_path,
+        max_companies=GCIS_MAX_COMPANIES,
+    )
+    own_name = next((a.company for a in affiliations if a.company_id == company_id), "")
+    if not own_name:
+        raise HTTPException(
+            status_code=404,
+            detail=f"統一編號 {company_id} 不在示範索引內（僅含有法人董事關係的公司）",
+        )
+
+    company_graph = build_company_graph(affiliations)
+    groups = detect_groups(company_graph)
+    target_gid = groups.get(own_name)
+    members = sorted(c for c, gid in groups.items() if gid == target_gid)
+    elapsed = time.perf_counter() - started
+
+    evidence = [
+        {
+            "company": a.company,
+            "company_id": a.company_id,
+            "parent": a.person,
+            "parent_id": a.person_id,
+            "role": a.role,
+        }
+        for a in affiliations
+        if a.tier == "A" and a.merge and a.company in set(members)
+    ]
+    candidates = sorted(
+        {(a.company, a.person) for a in affiliations if a.tier == "B" and a.company in set(members)}
+    )
+    return {
+        "company_id": company_id,
+        "company": own_name,
+        "group_members": members,
+        "group_size": len(members),
+        "evidence": sorted(evidence, key=lambda e: (e["company"], e["parent"])),
+        "candidates": [{"company": c, "person": p} for c, p in candidates],
+        "elapsed_seconds": round(elapsed, 3),
+        # 截斷狀態直接引用 BFS 自己回報的 meta，不用「回傳公司數是否達上限」
+        # 反推——反推會在剛好等於上限卻其實沒截斷時說謊，也看不出停止時邊界
+        # 上還剩多少家沒展開。
+        "neighborhood_companies": meta["visited_companies"],
+        "neighborhood_truncated": meta["truncated"],
+        "neighborhood_frontier_remaining": meta["frontier_remaining"],
+        "scope": (
+            "歸戶僅採 A 層（法人董事）證據，與全國索引一致；"
+            "B 層（自然人同名）只列候選，不合併，且線上精簡索引的候選清單"
+            "不如全國版完整。用於授信決策需接行內 KYC 身分資料。"
+        ),
+        "source": "經濟部商業發展署 董監事資料集（政府資料開放授權條款－第 1 版）",
     }

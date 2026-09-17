@@ -34,12 +34,16 @@ def test_counterparty_diversity_even_split_is_one():
     assert counterparty_diversity(g, "廠商") == 1.0
 
 
-def test_counterparty_diversity_no_revenue_is_zero():
-    """無收入者多樣性為 0，且不得除以零。"""
+def test_counterparty_diversity_no_revenue_is_unevaluated_not_zero():
+    """無收入者多樣性為 None（不可評估），不是 0——0 是「全部來自單一買方」。
+
+    兩者若共用 0.0，意見書會對有實際收入、只是買方集中的公司寫出「無足以
+    評估買方結構的收入紀錄」，與同一段裡的流入金額自相矛盾。
+    """
     g = nx.DiGraph()
     g.add_edge("廠商", "供應商", amount=1_000_000.0)
 
-    assert counterparty_diversity(g, "廠商") == 0.0
+    assert counterparty_diversity(g, "廠商") is None
 
 
 def test_counterparty_diversity_negative_edge_stays_in_unit_interval():

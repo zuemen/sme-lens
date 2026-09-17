@@ -22,3 +22,6 @@ checkpoints/
 
 # Node（前端在 web/，根目錄不應出現）
 node_modules/
+
+# 未壓縮的示範索引為衍生檔，進版控的是 data/demo/*.sqlite.gz
+data/demo/*.sqlite

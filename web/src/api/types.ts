@@ -111,7 +111,9 @@ export interface CreditOpinion {
   network_credit: number | null
   label: AttentionLabel
   label_zh: string
-  counterparty_diversity: number
+  /** 與 network_credit 同一個立場：無收入可看時後端回 null（不可評估），
+   * 回 0 專指「收入全部來自單一買方」這個最集中、風險最高的情形。 */
+  counterparty_diversity: number | null
   centrality_percentile: Record<string, number>
   community_risk_ratio: number
   group_id: number | null
