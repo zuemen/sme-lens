@@ -117,3 +117,27 @@ def test_favicon_no_content() -> None:
 def test_favicon_png_no_content() -> None:
     """瀏覽器亦會索取 /favicon.png，一併回 204。"""
     assert client.get("/favicon.png").status_code == 204
+
+
+def test_cors_origins_does_not_fail_open_on_blank_value(monkeypatch):
+    """SMELENS_CORS_ORIGINS 設了卻解析不出來源時必須報錯，不得靜默全開。
+
+    原本結尾是 `origins or ["*"]`：把變數設成空字串或 "," 時程式不報錯也不
+    警告，直接退回全開——一個打錯的收緊設定效果等於完全沒設，而設定的人
+    會以為已經收緊了。
+    """
+    from smelens.api.main import _cors_origins
+
+    # 沒設 = 明示全開，這是公開 Demo 的預期行為
+    monkeypatch.delenv("SMELENS_CORS_ORIGINS", raising=False)
+    assert _cors_origins() == ["*"]
+
+    # 設了正常值就照用
+    monkeypatch.setenv("SMELENS_CORS_ORIGINS", "https://a.example, https://b.example")
+    assert _cors_origins() == ["https://a.example", "https://b.example"]
+
+    # 設了但解析不出來源 = 設定錯誤，拒絕啟動
+    for blank in ("", "   ", ",", " , , "):
+        monkeypatch.setenv("SMELENS_CORS_ORIGINS", blank)
+        with pytest.raises(RuntimeError, match="SMELENS_CORS_ORIGINS"):
+            _cors_origins()

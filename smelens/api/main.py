@@ -74,10 +74,24 @@ app = FastAPI(
 
 
 def _cors_origins() -> list[str]:
-    """允許來源清單；未設定環境變數時全開。"""
-    raw = os.getenv("SMELENS_CORS_ORIGINS", "*")
+    """允許來源清單。未設定環境變數時全開（公開 Demo 的預期行為）。
+
+    刻意**不**失敗開放：原本結尾是 `return origins or ["*"]`，於是把
+    SMELENS_CORS_ORIGINS 設成空字串、"," 或全是空白（在部署面板上很容易發生）
+    時，程式不報錯也不警告，直接退回全開——一個打錯的收緊設定，效果等於完全
+    沒設，而且設定的人會以為已經收緊了。現在區分兩件事：變數沒設 = 明示全開；
+    變數設了但解析不出任何來源 = 設定錯誤，直接拒絕啟動。
+    """
+    raw = os.getenv("SMELENS_CORS_ORIGINS")
+    if raw is None:
+        return ["*"]
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return origins or ["*"]
+    if not origins:
+        raise RuntimeError(
+            "SMELENS_CORS_ORIGINS 已設定但解析不出任何來源"
+            f"（收到 {raw!r}）。要全開請直接移除這個環境變數，不要留空值。"
+        )
+    return origins
 
 
 # allow_credentials 必須為 False：瀏覽器規範不允許它與 allow_origins=["*"] 併用，
@@ -360,7 +374,9 @@ def _build_graph(req: ScoreRequest) -> tuple[nx.DiGraph, Any]:
     if not elliptic.raw_files_exist(RAW_DIR):
         raise HTTPException(
             status_code=404,
-            detail="data/raw 缺少 Elliptic 資料集，請先執行 make download-data",
+            # 對外訊息不提內部目錄與開發指令：那是部署者才需要知道的事，
+            # 出現在公開 API 的回應裡只是替攻擊者描繪伺服器的檔案結構。
+            detail="本服務未載入該研究資料集，此端點目前不可用。",
         )
     g, _ = _elliptic_graph_and_pipeline()
     if tx not in g:
@@ -616,7 +632,12 @@ def gcis_group(
     try:
         db_path = demo_index_path()
     except FileNotFoundError as exc:  # pragma: no cover - 部署缺檔時才會走到
-        raise HTTPException(status_code=503, detail=f"示範資料未就緒：{exc}") from exc
+        # 同上：不把索引檔的絕對路徑回給呼叫端。真正的原因寫進伺服器日誌，
+        # 部署者看 log 就知道是 vercel.json 的 includeFiles 漏了。
+        print(f"[gcis] 示範索引缺失：{exc}")
+        raise HTTPException(
+            status_code=503, detail="示範資料未就緒，請稍後再試或聯絡維運。"
+        ) from exc
 
     started = time.perf_counter()
     affiliations, meta = extract_neighborhood_with_meta(
