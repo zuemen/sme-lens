@@ -22,6 +22,14 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest -q
+      # 離線快照必須與後端同步。四份快照都由 make_snapshots.py 對同一份程式碼
+      # 產生，重產後有 diff 就代表 commit 的是舊的——實際發生過：後端加了
+      # tier／bridge_only 兩個欄位，group-snapshot 沒跟著重產。現場斷網時
+      # 演示用的就是這份快照。
+      - name: Snapshots are in sync with the backend
+        run: |
+          PYTHONIOENCODING=utf-8 PYTHONPATH=. python scripts/make_snapshots.py
+          git diff --exit-code web/src/api/
 
   web:
     runs-on: ubuntu-latest
@@ -60,21 +68,13 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # 後端由 playwright.config.ts 的 webServer 自行啟動並等 /ready，這裡只
+      # 負責把相依裝好。
       - name: Install backend
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
           python -m pip install uvicorn
-      - name: Start backend
-        run: |
-          python -m uvicorn smelens.api.main:app --host 127.0.0.1 --port 8000 &
-          for _ in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8000/ready && break
-            sleep 1
-          done
-          # /ready 不只回 200，還要回報企金端點齊備——接錯後端時要在這裡就失敗，
-          # 而不是讓六支 e2e 各自 timeout 三十秒後才說不出原因。
-          curl -sf http://127.0.0.1:8000/ready | grep -q '"ready":true'
       - name: Install frontend
         working-directory: web
         run: npm ci

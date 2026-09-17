@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, postGraph } from '../api/client'
 import type { GraphNode, WorkbenchPayload } from '../api/types'
 import { ErrorNotice } from '../components/ErrorNotice'
+import { EdgeTable } from '../components/EdgeTable'
 import { Panel } from '../components/Panel'
 import { GraphView } from '../graph/GraphView'
 
@@ -163,32 +164,11 @@ export default function Workbench() {
           </div>
 
           <Panel title="資金流向明細（鄰接表）">
-            <p className="mb-3 text-xs text-muted">
-              圖譜對螢幕閱讀器不可讀，此表為等效的文字替代，列出圖中每一條資金流向。
-            </p>
-            <div className="max-h-80 overflow-auto">
-              <table className="tabular w-full text-left text-xs">
-                <caption className="sr-only">
-                  金流圖譜的鄰接表，欄位為來源地址、目標地址與轉帳金額
-                </caption>
-                <thead className="sticky top-0 bg-panel text-muted">
-                  <tr>
-                    <th scope="col" className="py-2 pr-4 font-normal">來源</th>
-                    <th scope="col" className="py-2 pr-4 font-normal">目標</th>
-                    <th scope="col" className="py-2 pr-4 font-normal">金額（USDT）</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payload.edges.map((edge) => (
-                    <tr key={`${edge.source}->${edge.target}`} className="border-t border-line">
-                      <td className="py-2 pr-4">{edge.source}</td>
-                      <td className="py-2 pr-4">{edge.target}</td>
-                      <td className="py-2 pr-4">{edge.amount.toLocaleString('zh-TW')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <EdgeTable
+              payload={payload}
+              unit="USDT"
+              caption="金流圖譜的鄰接表，欄位為來源地址、目標地址與轉帳金額"
+            />
           </Panel>
 
           <Panel title="SNA 指標（依風險分數排序前 15 名）">

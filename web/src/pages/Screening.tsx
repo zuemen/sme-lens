@@ -4,6 +4,7 @@ import { SCREENING_SNAPSHOT } from '../api/snapshot'
 import type { ScreenResult } from '../api/types'
 import { DecisionCard } from '../components/DecisionCard'
 import { ErrorNotice } from '../components/ErrorNotice'
+import { EdgeTable } from '../components/EdgeTable'
 import { Panel } from '../components/Panel'
 import { GraphView } from '../graph/GraphView'
 
@@ -190,6 +191,16 @@ export default function Screening() {
               focus={result.target}
               layout="dagre"
               scheme="role"
+            />
+          </Panel>
+
+          <Panel title="資金流向明細（圖譜之等價替代）">
+            {/* 上方的「資金關聯證據鏈」只列出六條路徑，涵蓋不到整張圖；
+                網路圖不能是資訊的唯一載體（授信頁與工作台都遵守這條）。 */}
+            <EdgeTable
+              payload={result.graph}
+              unit="USDT"
+              caption="金流圖譜的鄰接表，欄位為來源地址、目標地址與轉帳金額"
             />
           </Panel>
 
