@@ -511,11 +511,13 @@ export default function Group() {
             {gcis.candidates.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold">
-                  B 層候選（自然人同名，{gcis.candidates.length} 筆，不參與合併）
+                  B 層候選（姓名欄同名，{gcis.candidates.length} 筆，不參與合併）
                 </h3>
                 <p className="mt-1 text-xs leading-relaxed text-muted">
                   公開資料沒有身分證字號，同名不同人必然存在（全台「陳建宏」一個姓名就掛
                   411 家公司），故這些只是候選，交由銀行以 KYC 既有身分資料解析。
+                  標題寫「姓名欄」而非「自然人」是因為登記資料的姓名欄偶爾填的是法人名稱
+                  （該列未填所代表法人時），這類列同樣只作候選、不作歸戶依據。
                 </p>
                 <ul className="mt-2 list-inside list-disc text-sm">
                   {gcis.candidates.slice(0, 12).map((row, index) => (
