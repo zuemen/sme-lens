@@ -191,3 +191,29 @@ export interface GcisGroupResult {
   privacy: string
   source: string
 }
+
+/** 貸後關注名單的一筆。分數只決定排序，真正要交付覆核的是 path。 */
+export interface EarlyWarnItem {
+  company: string
+  score: number
+  /** 距最近出事戶的跳數；0 代表它本身就是出事戶。 */
+  hops: number
+  source: string
+  /** 從 source 到 company 的最短路徑，含兩端——這是這筆預警的證據。 */
+  path: string[]
+  exposure_twd: number | null
+  action_zh: string
+  reason_zh: string
+}
+
+/** POST /earlywarn 的回應。 */
+export interface EarlyWarnResult {
+  seeds: string[]
+  /** 不在圖上的出事戶。明確列名而非靜默丟棄，否則會讓人誤以為那些戶沒有關聯風險。 */
+  seeds_not_in_graph: string[]
+  watchlist: EarlyWarnItem[]
+  /** 受影響授信餘額合計，已排除出事戶本身（其餘額已進催收程序）。 */
+  exposure_at_risk_twd: number
+  parameters: { alpha: number; threshold: number; max_hops: number }
+  method_zh: string
+}

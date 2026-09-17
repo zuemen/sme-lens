@@ -38,6 +38,13 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from smelens.api.serialize import graph_to_json, sna_table
+from smelens.credit.earlywarn import (
+    DEFAULT_ALPHA,
+    DEFAULT_MAX_HOPS,
+    DEFAULT_THRESHOLD,
+    exposure_at_risk,
+    warning_list,
+)
 from smelens.credit.group import (
     DEFAULT_HIDDEN_LINKS_LIMIT,
     Affiliation,
@@ -199,7 +206,14 @@ def health() -> dict[str, str]:
 READY_SERVICE_NAME = "sme-lens"
 
 #: 前端實際會呼叫、因此必須存在的路徑。少任何一條就代表接錯後端。
-REQUIRED_ROUTES = ("/credit", "/group", "/gcis/group", "/screen", "/graph")
+REQUIRED_ROUTES = (
+    "/credit",
+    "/group",
+    "/gcis/group",
+    "/earlywarn",
+    "/screen",
+    "/graph",
+)
 
 
 @app.get("/ready")
@@ -669,4 +683,85 @@ def gcis_group(
             "行內導入時姓名解析在銀行自有系統內完成，不經本服務。"
         ),
         "source": "經濟部商業發展署 董監事資料集（政府資料開放授權條款－第 1 版）",
+    }
+
+class EarlyWarnRequest(BaseModel):
+    """貸後早期預警請求：指定已出事的授信戶，回傳關聯風險的關注名單。"""
+
+    #: 已知出事的公司（逾期、退票、列為關注）。銀行手上本來就有這份名單，
+    #: 這也是為什麼本功能選標籤擴散而不是監督式分類器——它要的正是少量種子。
+    seeds: list[str] = Field(min_length=1, max_length=100, description="已出事的授信戶")
+    exposures: dict[str, float] = Field(
+        default_factory=dict, description="各公司授信餘額（新台幣元）", max_length=1000
+    )
+    alpha: float = Field(default=DEFAULT_ALPHA, gt=0.0, lt=1.0, description="擴散強度")
+    threshold: float = Field(default=DEFAULT_THRESHOLD, ge=0.0, le=1.0, description="分數門檻")
+    max_hops: int = Field(default=DEFAULT_MAX_HOPS, ge=1, le=6, description="最遠納入的跳數")
+
+    @field_validator("exposures")
+    @classmethod
+    def _finite_exposures(cls, v: dict[str, float]) -> dict[str, float]:
+        """與 /group 同一套標準：曝險金額須為非負有限數值。"""
+        for company, amount in v.items():
+            if not math.isfinite(amount) or amount < 0:
+                raise ValueError(f"{company} 的曝險金額需為非負的有限數值")
+        return v
+
+
+@app.post("/earlywarn")
+def earlywarn(
+    req: EarlyWarnRequest, x_api_key: str | None = Header(default=None)
+) -> dict[str, Any]:
+    """貸後早期預警：從已出事的戶沿關係圖擴散風險，產出帶證據路徑的關注名單。
+
+    與 /credit 的差別：/credit 回答「這一家能不能貸」，本端點回答「那一家出事了，
+    我還有哪些戶會被拖下去、金額多少」。用的是同一張關係圖。
+    """
+    _check_api_key(x_api_key)
+    g = sme_scenario.load_supply_chain_scenario()
+    unknown = sorted(s for s in req.seeds if s not in g)
+    known = [s for s in req.seeds if s in g]
+    if not known:
+        raise HTTPException(
+            status_code=404,
+            detail=f"指定的出事戶都不在本劇本關係圖中：{'、'.join(unknown)}",
+        )
+
+    items = warning_list(
+        g,
+        known,
+        req.exposures,
+        alpha=req.alpha,
+        threshold=req.threshold,
+        max_hops=req.max_hops,
+    )
+    return {
+        "seeds": known,
+        # 不在圖上的種子明確列名回報，不靜默丟棄——行員餵進行內名單時需要知道
+        # 哪幾家沒有被納入計算，否則會誤以為那些戶「沒有關聯風險」。
+        "seeds_not_in_graph": unknown,
+        "watchlist": [
+            {
+                "company": item.company,
+                "score": item.score,
+                "hops": item.hops,
+                "source": item.source,
+                "path": list(item.path),
+                "exposure_twd": item.exposure_twd,
+                "action_zh": item.action_zh,
+                "reason_zh": item.reason_zh,
+            }
+            for item in items
+        ],
+        "exposure_at_risk_twd": exposure_at_risk(items),
+        "parameters": {
+            "alpha": req.alpha,
+            "threshold": req.threshold,
+            "max_hops": req.max_hops,
+        },
+        "method_zh": (
+            "帶夾制的標籤擴散（label spreading，半監督式圖學習）：只需銀行既有的"
+            "少量出事戶名單即可推論關聯風險，每一筆都附風險來源與最短路徑，"
+            "分數只決定排序，交付授信人員覆核的是那條路徑。"
+        ),
     }

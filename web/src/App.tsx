@@ -9,6 +9,7 @@ import Landing from './pages/Landing'
 // 一次抓完。
 const Credit = lazy(() => import('./pages/Credit'))
 const Group = lazy(() => import('./pages/Group'))
+const EarlyWarn = lazy(() => import('./pages/EarlyWarn'))
 const Research = lazy(() => import('./pages/Research'))
 const Screening = lazy(() => import('./pages/Screening'))
 const Workbench = lazy(() => import('./pages/Workbench'))
@@ -17,6 +18,7 @@ const NAV = [
   { to: '/', label: '首頁' },
   { to: '/credit', label: '授信意見書' },
   { to: '/group', label: '集團歸戶' },
+  { to: '/earlywarn', label: '貸後早期預警' },
   { to: '/screening', label: '出金審查' },
   { to: '/workbench', label: '金流圖譜' },
   { to: '/research', label: 'AI 模型評估' },
@@ -71,6 +73,7 @@ export default function App() {
             <Route path="/screening" element={<Screening />} />
             <Route path="/credit" element={<Credit />} />
             <Route path="/group" element={<Group />} />
+          <Route path="/earlywarn" element={<EarlyWarn />} />
             <Route path="/workbench" element={<Workbench />} />
             <Route path="/research" element={<Research />} />
           </Routes>

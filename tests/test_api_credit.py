@@ -402,3 +402,62 @@ def test_screen_rejects_non_finite_amount():
         headers={"content-type": "application/json"},
     )
     assert "有限數值" in response.text
+
+
+def test_earlywarn_returns_watchlist_with_evidence_and_exposure():
+    """/earlywarn 回傳的每一筆都要有證據路徑與處置建議，並算出受影響曝險。"""
+    body = client.post(
+        "/earlywarn",
+        json={
+            "seeds": ["宏益企業"],
+            "exposures": {
+                "泰昇精密": 30_000_000,
+                "昇泰貿易": 12_000_000,
+                "宏益企業": 8_000_000,
+                "鴻寶電子": 50_000_000,
+                "中部機電": 4_000_000,
+                "禾昌五金": 6_000_000,
+            },
+        },
+    ).json()
+
+    companies = [w["company"] for w in body["watchlist"]]
+    assert companies == ["宏益企業", "昇泰貿易", "泰昇精密", "泰昇投資", "鴻寶電子", "中部機電"]
+    # 對照組（結構乾淨、三跳之外）不得進名單——一份把全圖都列進來的名單等於沒有名單
+    assert "禾昌五金" not in companies
+
+    applicant = next(w for w in body["watchlist"] if w["company"] == "泰昇精密")
+    assert applicant["path"] == ["宏益企業", "泰昇精密"]
+    assert applicant["hops"] == 1
+    assert "應收帳款" in applicant["action_zh"]
+
+    # 受影響曝險排除種子本身（已進催收），96,000,000 = 30M+12M+50M+4M
+    assert body["exposure_at_risk_twd"] == 96_000_000.0
+    assert "標籤擴散" in body["method_zh"]
+
+
+def test_earlywarn_reports_seeds_missing_from_the_graph():
+    """不在圖上的出事戶要明確列名回報，不能靜默丟棄。
+
+    行員餵進行內名單時必須知道哪幾家沒被納入計算，否則會誤以為那些戶
+    「沒有關聯風險」——那是這個功能最不該造成的誤解。
+    """
+    body = client.post(
+        "/earlywarn", json={"seeds": ["宏益企業", "不在圖上的公司"]}
+    ).json()
+
+    assert body["seeds"] == ["宏益企業"]
+    assert body["seeds_not_in_graph"] == ["不在圖上的公司"]
+
+
+def test_earlywarn_rejects_all_unknown_seeds():
+    """所有出事戶都不在圖上時回 404，而不是回一份空名單假裝查詢成功。"""
+    response = client.post("/earlywarn", json={"seeds": ["甲", "乙"]})
+
+    assert response.status_code == 404
+    assert "不在本劇本關係圖中" in response.json()["detail"]
+
+
+def test_earlywarn_requires_at_least_one_seed():
+    """沒有種子就沒有已知事實，不該推論出任何風險——請求層就擋掉。"""
+    assert client.post("/earlywarn", json={"seeds": []}).status_code == 422

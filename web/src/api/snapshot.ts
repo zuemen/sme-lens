@@ -1,9 +1,10 @@
-import type { CreditOpinion, GroupResult, ScreenResult } from './types'
+import type { CreditOpinion, EarlyWarnResult, GroupResult, ScreenResult } from './types'
 import raw from './screening-snapshot.json'
 import creditSnapshot from './credit-snapshot.json'
 import creditControlSnapshot from './credit-control-snapshot.json'
 import groupSnapshot from './group-snapshot.json'
 import demoRoster from './demo-roster.json'
+import earlywarnSnapshot from './earlywarn-snapshot.json'
 
 /**
  * 這裡故意不用 `as unknown as T`：那種雙重斷言會完全關掉型別檢查，快照的實際
@@ -25,6 +26,8 @@ export const CREDIT_SNAPSHOT = creditSnapshot as CreditOpinion
 /** 對照組（禾昌五金）的離線備援，讓「不是逢公司必標」的示範也有斷網保險。 */
 export const CREDIT_CONTROL_SNAPSHOT = creditControlSnapshot as CreditOpinion
 export const GROUP_SNAPSHOT = groupSnapshot as GroupResult
+/** 貸後早期預警的離線備援；畫面必須明確標示為離線快照。 */
+export const EARLYWARN_SNAPSHOT = earlywarnSnapshot as EarlyWarnResult
 
 /**
  * 集團歸戶頁的示範名冊，唯一來源是 scripts/make_snapshots.py：

@@ -36,10 +36,10 @@ test('對照組不被誤殺', async ({ page }) => {
   await expect(page.getByText('予以放行', { exact: true })).toBeVisible({ timeout: 30_000 })
 })
 
-test('四個頁面都走得到', async ({ page }) => {
+test('導覽列的每一頁都走得到', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: /企鏡/ })).toBeVisible()
-  for (const name of ['出金審查', '金流圖譜', 'AI 模型評估']) {
+  for (const name of ['貸後早期預警', '出金審查', '金流圖譜', 'AI 模型評估']) {
     // exact: true — 首頁的 CTA 連結「執行出金審查 Demo」也包含「出金審查」子字串，
     // 用 exact 鎖定導覽列本身的連結，避免 strict-mode 命中多個連結。
     await page.getByRole('link', { name, exact: true }).click()

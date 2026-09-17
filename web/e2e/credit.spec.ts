@@ -85,3 +85,23 @@ test('集團歸戶頁可用真實統一編號查公開登記資料', async ({ pa
     '一詮精密工業股份有限公司',
   )
 })
+
+test('貸後早期預警 Demo 全流程', async ({ page }) => {
+  await page.goto('/earlywarn')
+
+  await expect(page.getByRole('heading', { name: '貸後早期預警' })).toBeVisible()
+
+  await page.getByTestId('earlywarn-submit').click()
+
+  // 名單筆數與受影響曝險是這一頁要交付的兩個頭條數字
+  await expect(page.getByTestId('warn-count')).toHaveText('6', { timeout: 30_000 })
+  await expect(page.getByTestId('warn-exposure')).toHaveText('96,000,000')
+
+  // 每一筆都要看得到證據路徑，不只是分數
+  const table = page.getByTestId('warn-table')
+  await expect(table).toContainText('宏益企業 → 泰昇精密')
+  await expect(table).toContainText('宏益企業 → 昇泰貿易 → 泰昇投資')
+
+  // 對照組（結構乾淨、三跳之外）不得被誤殺
+  await expect(table).not.toContainText('禾昌五金')
+})

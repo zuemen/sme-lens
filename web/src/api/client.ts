@@ -1,6 +1,7 @@
 import { describeError } from './errors'
 import type {
   CreditOpinion,
+  EarlyWarnResult,
   GcisGroupResult,
   GroupResult,
   ScreenResult,
@@ -89,6 +90,14 @@ export function postGroup(body: {
   exposures?: Record<string, number>
 }): Promise<GroupResult> {
   return post<GroupResult>('/group', body)
+}
+
+/** 貸後早期預警：指定已出事的授信戶，回傳帶證據路徑的關注名單。 */
+export function postEarlyWarn(body: {
+  seeds: string[]
+  exposures?: Record<string, number>
+}): Promise<EarlyWarnResult> {
+  return post<EarlyWarnResult>('/earlywarn', body)
 }
 
 /** 用真實統一編號查集團歸戶（公開登記資料，非呼叫端自備名冊）。

@@ -75,6 +75,18 @@ DEMO_DECLARED = {
 }
 DEMO_EXPOSURES = {"泰昇精密": 30_000_000, "泰昇投資": 12_000_000, "昇泰貿易": 8_000_000}
 
+#: 早期預警頁的示範授信餘額與出事戶。必須與 web/src/pages/EarlyWarn.tsx 的
+#: DEMO_EXPOSURES／DEFAULT_SEED 逐字一致，否則離線快照會顯示與線上不同的金額。
+EARLYWARN_SEED = "宏益企業"
+EARLYWARN_EXPOSURES = {
+    "泰昇精密": 30_000_000,
+    "昇泰貿易": 12_000_000,
+    "宏益企業": 8_000_000,
+    "鴻寶電子": 50_000_000,
+    "中部機電": 4_000_000,
+    "禾昌五金": 6_000_000,
+}
+
 
 def main() -> None:
     client = TestClient(app)
@@ -120,6 +132,15 @@ def main() -> None:
         json.dumps(group.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
+    earlywarn = client.post(
+        "/earlywarn",
+        json={"seeds": [EARLYWARN_SEED], "exposures": EARLYWARN_EXPOSURES},
+    )
+    earlywarn.raise_for_status()
+    (OUT_DIR / "earlywarn-snapshot.json").write_text(
+        json.dumps(earlywarn.json(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
     # 與 Screening.tsx 的 postScreen('TOtcOut01', 500000) 完全一致的請求
     # （含 postScreen 內固定帶上的 request_id），避免快照與畫面實際打的請求脫鉤。
     screening = client.post(
@@ -133,7 +154,7 @@ def main() -> None:
 
     print(
         "wrote demo-roster.json / credit-snapshot.json / credit-control-snapshot.json / "
-        "group-snapshot.json / screening-snapshot.json"
+        "group-snapshot.json / earlywarn-snapshot.json / screening-snapshot.json"
     )
 
 
