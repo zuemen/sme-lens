@@ -27,10 +27,20 @@ export default function Research() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">研究成果</h1>
+        <h1 className="text-2xl font-semibold">AI 模型評估（圖神經網路 GNN 離線實測）</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
-          遵守 Elliptic 官方時間切分（train ≤ 34 期 / test ≥ 35 期）避免資料洩漏。
-          以下為 illicit 類別指標，五列為同一次完整資料集實測。
+          本頁是<b>離線研究結果</b>，不是線上功能：在 Elliptic 公開資料集（20 萬筆
+          比特幣交易、具真值標註）上訓練與評估圖神經網路，遵守官方時間切分
+          （train ≤ 34 期 / test ≥ 35 期）避免資料洩漏。以下為 illicit 類別指標，
+          五列為同一次完整資料集實測。
+        </p>
+        <p className="mt-3 max-w-3xl rounded border-l-4 border-line pl-4 text-sm leading-relaxed text-muted">
+          <b>線上的企金授信端點一律以規則分數服務，模型尚未上線。</b>
+          意見書中的「0.5×模型 + 0.5×規則」融合路徑已實作並有測試涵蓋，但線上不傳入
+          模型分數。理由寫在下方發現一：在有真值標註的公開資料上，樹模型仍優於 GNN，
+          而企業關係圖這一側<b>沒有可用的真值標註</b>——沒有標註就沒有可信的監督式
+          訓練，硬上模型只會得到一個無法驗證的黑箱分數。這也是本系統選擇輸出
+          「可覆核的結構證據」而非評等分數的原因。
         </p>
       </div>
 

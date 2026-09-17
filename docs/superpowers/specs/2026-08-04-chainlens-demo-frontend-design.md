@@ -35,7 +35,7 @@ ChainLens 目前只有兩個對外介面：FastAPI 的 `POST /score`（單點評
 ## 三、架構
 
 ```
-web/  (Vite + React 18 + TypeScript)     ← 獨立 Vercel 專案，Root Directory = web
+web/  (Vite + React 19 + TypeScript)     ← 獨立 Vercel 專案，Root Directory = web
   └ 靜態產物由 CDN 供應，首頁載入不經過 Python
         │
         │  fetch(import.meta.env.VITE_API_BASE) + CORS
@@ -246,7 +246,7 @@ TRON 模式**不做**自動退回範例圖。Streamlit 版本會靜默降級，�
 
 | 項目 | 選擇 | 理由 |
 |---|---|---|
-| 建置 | Vite + React 18 + TypeScript | 靜態產物、Vercel 一等支援 |
+| 建置 | Vite + React 19 + TypeScript | 靜態產物、Vercel 一等支援 |
 | 路由 | React Router | 四頁多頁站 |
 | 圖譜 | Cytoscape.js + `cytoscape-dagre` | 見 5.3 |
 | 樣式 | Tailwind CSS | 深色主題與設計 token 好管理 |

@@ -84,6 +84,12 @@ export default function Workbench() {
       <div>
         <h1 className="text-2xl font-semibold">金流圖譜工作台</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
+          本頁把關係圖引擎的<b>原始能力</b>攤開：SNA 結構指標、社群偵測與風險圖樣，
+          都是企金授信那一側算「網絡信用分」與「授信關注分數」時用的同一批計算。
+          這裡以鏈上金流為輸入，是因為它有公開可查的真實資料可以攤在檯面上驗證；
+          換成企業間的交易或董監事關係，走的是同一條管線。
+        </p>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           內建範例圖含集資扇入、快速分散、剝洋蔥鏈三種圖樣。也可輸入 TRON 主網地址，
           即時抓取 2-hop USDT 金流圖——真實查詢約需 10–30 秒。
         </p>

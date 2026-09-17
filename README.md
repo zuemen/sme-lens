@@ -82,12 +82,16 @@ A 層（法人董事）證據；B 層只列候選不合併，用於授信決策�
 
 ## 部署
 
-前後端是**兩個獨立的 Vercel 專案**，指向同一個 repo：
+正式網址：
 
-| 專案 | Root Directory | 設定檔 | 內容 |
+| 專案 | 網址 | Root Directory | 設定檔 |
 |---|---|---|---|
-| 前端 | `web/` | `web/vercel.json`（SPA rewrite） | Vite 靜態站台 |
-| 後端 | repo 根目錄 | `vercel.json` | FastAPI serverless function |
+| 前端 | <https://sme-lens.vercel.app> | `web/` | `web/vercel.json`（SPA rewrite） |
+| 後端 API | <https://sme-lens-api.vercel.app> | repo 根目錄 | `vercel.json` |
+
+兩個都是指向同一個 repo 的獨立 Vercel 專案，且都綁在 `main`——**推上 `main`
+就會自動重新部署**，不需要手動 deploy。也因此每次改完都要重新實打驗證（見下方
+驗證指令），不能假設「本機綠燈＝線上正確」。
 
 **後端**：進入點必須是 `api/index.py`——Vercel 只把 `api/` 底下的檔案當
 serverless function。`vercel.json` 的 `functions` 鍵若寫成模組真正的位置

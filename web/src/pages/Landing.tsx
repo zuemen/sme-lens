@@ -98,6 +98,11 @@ export default function Landing() {
           這套企業關係圖引擎同時支援出金審查：偵測從未被通報、僅憑自身分數看不出異常的
           可疑地址，攔下黑名單攔不住的出金。
         </p>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+          因此本作品同時落在主辦的<b>「企業金融服務創新」</b>與<b>「科技防詐」</b>
+          兩個情境，並以<b>圖結構分析與圖神經網路</b>作為 AI 科技應用的主體——
+          線上服務一律以可覆核的規則分數運作，模型評估結果另頁公開。
+        </p>
         <Link
           to="/screening"
           className="mt-6 inline-block rounded border border-line px-5 py-2 text-sm font-semibold"

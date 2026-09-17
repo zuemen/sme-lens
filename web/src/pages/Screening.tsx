@@ -93,6 +93,12 @@ export default function Screening() {
       <div>
         <h1 className="text-2xl font-semibold">出金審查</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
+          這一頁和企金授信用的是<b>同一套關係圖引擎</b>，只是換了看的東西：企金端看
+          董監事與交易對手，防詐端看資金流向。共通的問題是「單看一個戶頭的分數看不
+          出異常，要看它在網絡裡的位置」——集團曝險被拆散在看似無關的借款戶之間，
+          與可疑金流藏在從未被通報的地址背後，是同一個結構問題的兩種樣貌。
+        </p>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
           交易所用戶申請將 50 萬 USDT 提領至外部地址。該地址從未被通報、不在任何黑名單上——
           傳統名單比對會直接放行。以下展示結構化關聯追溯如何攔下它。
         </p>

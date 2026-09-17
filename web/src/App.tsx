@@ -19,7 +19,7 @@ const NAV = [
   { to: '/group', label: '集團歸戶' },
   { to: '/screening', label: '出金審查' },
   { to: '/workbench', label: '金流圖譜' },
-  { to: '/research', label: '研究成果' },
+  { to: '/research', label: 'AI 模型評估' },
 ]
 
 export default function App() {

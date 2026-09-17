@@ -4,9 +4,9 @@
 
 **Goal:** 讓「企鏡 SME Lens」這個參賽作品在 demo 網站上真的看得到——目前 `web/` 只有繼承自 ChainLens 的防詐流程，`/credit` 與 `/group` 在 UI 上完全不存在，首頁品牌仍是「鏈鏡 ChainLens」。
 
-**Architecture:** 沿用既有的 Vite + React 18 + TypeScript + Tailwind v4 + Cytoscape 結構與元件（`Panel`、`ErrorNotice`、`RiskBadge`、`GraphView`）。新增兩個頁面（授信意見書、集團歸戶）、擴充型別與 API client、把企金角色加進 Cytoscape 配色、改寫品牌與首頁。防詐頁面（`/screening`、`/workbench`）保持可用，改為次要導覽。
+**Architecture:** 沿用既有的 Vite + React 19 + TypeScript + Tailwind v4 + Cytoscape 結構與元件（`Panel`、`ErrorNotice`、`RiskBadge`、`GraphView`）。新增兩個頁面（授信意見書、集團歸戶）、擴充型別與 API client、把企金角色加進 Cytoscape 配色、改寫品牌與首頁。防詐頁面（`/screening`、`/workbench`）保持可用，改為次要導覽。
 
-**Tech Stack:** React 18、TypeScript、Tailwind v4、Cytoscape、react-router-dom、vitest、Playwright
+**Tech Stack:** React 19、TypeScript、Tailwind v4、Cytoscape、react-router-dom、vitest、Playwright
 
 **Spec:** `docs/superpowers/specs/2026-09-08-sme-lens-spec.md`（第 6 節「計畫 3：行員工作台」）
 

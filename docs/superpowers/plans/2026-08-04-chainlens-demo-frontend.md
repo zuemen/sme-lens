@@ -6,7 +6,7 @@
 
 **Architecture:** `web/` 放 Vite + React + TypeScript 靜態站，部署為獨立 Vercel 專案（Root Directory = `web`），從 CDN 秒開；資料來自既有 FastAPI 專案新增的兩個端點 `POST /screen` 與 `POST /graph`，跨網域以 CORS 連接。既有 API 的部署設定完全不動。
 
-**Tech Stack:** Python 3.11 / FastAPI / NetworkX / pandas（後端），Vite 7 / React 18 / TypeScript / Tailwind CSS v4 / Cytoscape.js + dagre / Vitest / Playwright（前端）。
+**Tech Stack:** Python 3.11 / FastAPI / NetworkX / pandas（後端），Vite 7 / React 19 / TypeScript / Tailwind CSS v4 / Cytoscape.js + dagre / Vitest / Playwright（前端）。
 
 **設計來源：** `docs/superpowers/specs/2026-08-04-chainlens-demo-frontend-design.md`。契約細節以該 spec 為準。
 
