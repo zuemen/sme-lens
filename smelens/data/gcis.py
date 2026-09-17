@@ -217,6 +217,25 @@ def _represented_identity_key(edge: CorporateDirectorEdge) -> str:
     return normalise_name(edge.represented_name)
 
 
+def _distinct_group_counts(
+    edges: list[CorporateDirectorEdge],
+    group_key,
+    item_key,
+) -> Counter[str]:
+    """依 group_key 分組，計數每組內「相異」item_key 值的個數。
+
+    機構橋接（一個法人代表太多家公司）與合資橋接（一家公司被太多不同法人
+    代表）是同一個問題的兩個方向——差別只在於哪一端當分組鍵、哪一端當計數
+    對象。本函式把「分組→計數相異值」這個共同邏輯抽出來，
+    classify_hub_entities／classify_coinvestee_companies 各自只需要決定
+    group_key 與 item_key 怎麼指定，不必各寫一份幾乎相同的迴圈。
+    """
+    groups: dict[str, set[str]] = {}
+    for e in edges:
+        groups.setdefault(group_key(e), set()).add(item_key(e))
+    return Counter({key: len(items) for key, items in groups.items()})
+
+
 def classify_hub_entities(
     edges: list[CorporateDirectorEdge], *, seat_threshold: int = DEFAULT_HUB_SEAT_THRESHOLD
 ) -> set[str]:
@@ -224,16 +243,80 @@ def classify_hub_entities(
 
     計數以 _represented_identity_key 分組（identifier 優先、名稱退回），
     與 build_company_graph 判斷「同一實體」的邏輯一致，確保這裡標記的
-    hub 與圖上實際會被合併的邊是同一組實體。
+    hub 與圖上實際會被合併的邊是同一組實體。以相異公司數計數（而非邊數），
+    避免同一家公司因所代表法人名稱寫法不一致而重覆列在同一組底下時，把
+    分母灌水。
     """
-    counts = Counter(_represented_identity_key(e) for e in edges)
+    counts = _distinct_group_counts(edges, _represented_identity_key, lambda e: e.company_id)
     return {key for key, count in counts.items() if count >= seat_threshold}
+
+
+#: 一家公司被幾個「相異」法人董事共同代表即視為「合資／被投資橋接實體」，
+#: 其 A 層 Affiliation 只作證據不作歸戶合併依據——與 DEFAULT_HUB_SEAT_THRESHOLD
+#: 是同一個問題的鏡像版本（機構橋接防「一個法人代表太多家」；合資橋接防
+#: 「一家公司被太多不同法人代表」），見 classify_coinvestee_companies docstring
+#: 與 docs/GCIS_FINDINGS.md「合資橋接門檻」一節的實測依據。
+#:
+#: 門檻由兩份全國實測資料交叉決定，不是憑感覺訂的：
+#:
+#: 1. 分布（scripts/_coinvestee_scan.py 產出 data/cache/coinvestee_scan.json
+#:    可重跑驗證）：對 53,114 家有法人董事的公司計數相異法人董事數，高度
+#:    右偏——1 個：43,995 家（82.8%）、2 個：6,024 家（11.3%）、3 個：
+#:    1,798 家（3.4%）、4 個以上僅 1,297 家（2.4%）。4 是分布尾巴實際開始
+#:    變細的轉折點：1～3 個仍是「一家控股公司＋至多一兩位共同投資人」的
+#:    合理結構，4 個以上才明顯是多方共同出資的合資／創投被投資公司型態。
+#: 2. 全國最大群組規模（scripts/_coinvestee_sweep.py，機構橋接門檻固定在
+#:    DEFAULT_HUB_SEAT_THRESHOLD=5，只變動本門檻）——
+#:      門檻 2：最大群組 14 家，多公司群組 17,282 個
+#:      門檻 3：最大群組 34 家，多公司群組 19,082 個
+#:      門檻 4：最大群組 60 家，多公司群組 19,129 個（本欄位取此值）
+#:      門檻 5：最大群組 99 家，多公司群組 18,991 個
+#:      門檻 6：最大群組 108 家，多公司群組 18,889 個
+#:      門檻 7：最大群組 118 家，多公司群組 18,826 個
+#:      門檻 10：最大群組 349 家，多公司群組 18,696 個
+#:      不設此防護：最大群組 1,448 家（母公司歸戶修復的副作用，見
+#:      docs/GCIS_FINDINGS.md）
+#:    門檻 4 同時是「最大群組規模仍低（60 家）」與「多公司群組數最高
+#:    （19,129，比門檻 2、3 都多）」兩者兼顧的最佳點——門檻 2、3 雖然最大
+#:    群組更小，但濾掉了更多真實的小型多公司群組（過嚴誤殺）；門檻 5 以上
+#:    最大群組回升，橋接效應重新主導。取 4 為預設值：與機構橋接門檻 5 相近
+#:    但略嚴一格——公司端的合資訊號比法人端的機構訊號更直接（一家公司同時
+#:    被 4 個不相干法人派任董事，幾乎必然代表多方共同投資）。銀行可依自身
+#:    風控政策調整。
+DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD = 4
+
+
+def classify_coinvestee_companies(
+    edges: list[CorporateDirectorEdge],
+    *,
+    director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
+) -> set[str]:
+    """回傳相異法人董事數達門檻的「合資／被投資橋接」公司統一編號集合。
+
+    這是 classify_hub_entities 的鏡像：機構橋接防「一個法人代表太多家
+    公司」，合資橋接防「一家公司被太多不同法人代表」——兩者都是遞移閉包
+    過度擴散的同一類問題，只是換了分組的方向，故重用 _distinct_group_counts
+    同一份邏輯，只是把 group_key／item_key 對調。
+
+    全國實測發現：母公司歸戶根因修復（母公司自身也入圖）之後，任何一家
+    「被多個不相干法人共同派任董事」的公司（合資公司、創投被投資公司）
+    會把這些法人各自的家族全部橋接起來，即使每個法人各自的代表席次都遠
+    低於機構橋接門檻——這正是本函式要抓的對稱防護，見
+    docs/GCIS_FINDINGS.md「合資橋接門檻」一節。
+
+    計數以公司統一編號分組（load_corporate_director_edges 保證非空），
+    相異法人董事以 _represented_identity_key 判斷（identifier 優先、名稱
+    退回），與 classify_hub_entities 完全一致。
+    """
+    counts = _distinct_group_counts(edges, lambda e: e.company_id, _represented_identity_key)
+    return {key for key, count in counts.items() if count >= director_threshold}
 
 
 def corporate_edges_to_affiliations(
     edges: list[CorporateDirectorEdge],
     *,
     hub_seat_threshold: int = DEFAULT_HUB_SEAT_THRESHOLD,
+    coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
 ) -> Iterator[Affiliation]:
     """把 A 層邊轉成 Affiliation，餵進 build_company_graph 沿用既有歸戶機制。
 
@@ -268,12 +351,26 @@ def corporate_edges_to_affiliations(
     被靜默丟棄——子公司之間仍照舊靠名稱字串共用同一個「所代表法人」而連邊。
     同一個母公司在多筆邊裡重覆出現時，這筆自身 Affiliation 只送一次
     （seen_parents 去重），避免無意義地重覆同一份資料。
+
+    合資橋接對稱防護——一家公司被太多不同法人代表：母公司根因修復讓母公司
+    節點本身也入圖後，任何「被多個不相干法人共同派任董事」的公司（合資
+    公司、創投被投資公司）會把這些法人各自的家族全部橋接起來，即使每個
+    法人各自的代表席次都遠低於機構橋接門檻——這是機構橋接問題的鏡像，見
+    classify_coinvestee_companies docstring。修法：coinvestee_director_threshold
+    達標的公司統一編號（見 classify_coinvestee_companies），其「作為子公司
+    被代表」的那筆 Affiliation（company=該公司）額外標記 merge=False；母
+    公司自身的 Affiliation 不受影響，仍照機構橋接門檻單獨判斷。這與機構
+    橋接的合併判斷同理必須落到 build_company_graph 的逐邊（而非逐實體）
+    層級——見該函式 docstring「按 (company, person) 逐邊判斷」一節。
     """
     hub_ids = classify_hub_entities(edges, seat_threshold=hub_seat_threshold)
+    coinvestee_ids = classify_coinvestee_companies(
+        edges, director_threshold=coinvestee_director_threshold
+    )
     seen_parents: set[str] = set()
     for edge in edges:
         key = _represented_identity_key(edge)
-        can_merge = key not in hub_ids
+        can_merge = key not in hub_ids and edge.company_id not in coinvestee_ids
         yield Affiliation(
             company=edge.company_name,
             person=edge.represented_name,
@@ -286,6 +383,7 @@ def corporate_edges_to_affiliations(
         )
         if edge.represented_id and key not in seen_parents:
             seen_parents.add(key)
+            parent_can_merge = key not in hub_ids and edge.represented_id not in coinvestee_ids
             yield Affiliation(
                 company=edge.represented_name,
                 person=edge.represented_name,
@@ -294,7 +392,7 @@ def corporate_edges_to_affiliations(
                 person_id=edge.represented_id,
                 tier="A",
                 shares=None,
-                merge=can_merge,
+                merge=parent_can_merge,
             )
 
 
@@ -427,6 +525,28 @@ def _seat_counts(conn: sqlite3.Connection, column: str, values: set[str]) -> dic
     return dict(cur.fetchall())
 
 
+def _coinvestee_director_counts(conn: sqlite3.Connection, company_ids: set[str]) -> dict[str, int]:
+    """查詢 company_ids 這批公司統一編號各自的相異法人董事數。
+
+    與 _seat_counts 是同一種聚合的鏡像方向：_seat_counts 數「一個法人代表
+    幾家公司」，本函式數「一家公司被幾個相異法人代表」——COALESCE 讓
+    represented_id 查得到時優先用它去重，查不到才退回 represented_norm，
+    與 classify_coinvestee_companies／_represented_identity_key 同一套識別
+    鍵邏輯，確保 BFS 展開這一側判斷的合資橋接公司與全國批次腳本判斷的是
+    同一組公司。用一次 SQL 聚合完成，不必先把候選公司的全部列搬進 Python。
+    """
+    if not company_ids:
+        return {}
+    placeholders = ",".join("?" * len(company_ids))
+    cur = conn.execute(
+        "SELECT company_id, COUNT(DISTINCT COALESCE(represented_id, represented_norm)) "
+        f"FROM rows WHERE company_id IN ({placeholders}) AND represented_norm != '' "
+        "GROUP BY company_id",
+        tuple(company_ids),
+    )
+    return dict(cur.fetchall())
+
+
 def extract_neighborhood(
     csv_path: str | Path,
     root_company_id: str,
@@ -435,6 +555,7 @@ def extract_neighborhood(
     max_companies: int = 300,
     hub_name_threshold: int = 20,
     hub_seat_threshold: int = DEFAULT_HUB_SEAT_THRESHOLD,
+    coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
     db_path: str | Path | None = None,
 ) -> list[Affiliation]:
     """從指定統一編號出發，沿 A 層（法人董事）與 B 層（自然人姓名）關係
@@ -467,6 +588,13 @@ def extract_neighborhood(
     就會吃下全國圖，這正是全國實測發現的機構橋接問題在鄰域展開這一側的
     對應防護。
 
+    coinvestee_director_threshold 是機構橋接的鏡像防護閥（見
+    smelens.data.gcis.DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD）：某公司若被
+    達門檻的相異法人董事共同代表（合資公司、創投被投資公司），該公司「作為
+    子公司被代表」這一側的 Affiliation 標記 merge=False，不會被拿去把兩個
+    原本不相干的法人家族併成一個歸戶集團——關係仍收進鄰域清單、仍可在
+    hidden_links 看到，只是不當作合併依據。
+
     max_companies 是鄰域公司數上限，達到後停止展開（即使 depth 還沒走完）。
     """
     if depth < 1:
@@ -476,7 +604,13 @@ def extract_neighborhood(
     conn = sqlite3.connect(resolved_db_path)
     try:
         return _bfs_neighborhood(
-            conn, root_company_id, depth, max_companies, hub_name_threshold, hub_seat_threshold
+            conn,
+            root_company_id,
+            depth,
+            max_companies,
+            hub_name_threshold,
+            hub_seat_threshold,
+            coinvestee_director_threshold,
         )
     finally:
         conn.close()
@@ -489,6 +623,7 @@ def _collect_hop(
     hub_seat_threshold: int,
     collected: list[Affiliation],
     collected_keys: set[tuple[str, str, str]],
+    coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
 ) -> tuple[set[str], set[str]]:
     """抓 company_ids 這批公司自己的全部董監事列，收進 collected，並回傳
     「值得繼續往外展開」的 (自然人姓名正規化鍵集合, 所代表法人正規化鍵集合)
@@ -525,11 +660,26 @@ def _collect_hop(
     }
     expand_represented_norms = represented_norms - hub_represented_norms
 
+    # 合資橋接對稱防護（見 DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD）：查詢這批
+    # 公司自己，以及本輪出現的所代表法人（可能本身也是一家公司、可能還沒
+    # 進 company_ids）各自的相異法人董事數——與 person_seat_counts／
+    # represented_seat_counts 一樣是全域聚合查詢，不受這一個 BFS 批次的視野
+    # 限制，故母公司即使不在本批 company_ids 裡，其自身的合資橋接狀態一樣
+    # 判斷得到。
+    represented_ids_seen = {r[7] for r in hop_rows if r[7]}
+    coinvestee_counts = _coinvestee_director_counts(
+        conn, company_ids | represented_ids_seen
+    )
+    coinvestee_cids = {
+        cid for cid, count in coinvestee_counts.items() if count >= coinvestee_director_threshold
+    }
+
     for r in hop_rows:
         cid, company_name, role, person_name, person_norm = r[0], r[1], r[2], r[3], r[4]
         represented_name, represented_norm, represented_id, shares = r[5], r[6], r[7], r[8]
         if represented_norm:
-            can_merge = represented_norm not in hub_represented_norms
+            not_hub = represented_norm not in hub_represented_norms
+            can_merge = not_hub and cid not in coinvestee_cids
             # 根因修復：所代表法人（母公司）查得到統一編號時，額外收一筆「母公司
             # 自己」的 Affiliation，讓母公司節點透過同一個 person_key（represented_id）
             # 直接與每一家子公司連邊，不再只靠子公司之間共用母公司這個「人」而漏掉
@@ -540,6 +690,10 @@ def _collect_hop(
                 self_key = ("SELF", "A", represented_norm)
                 if self_key not in collected_keys:
                     collected_keys.add(self_key)
+                    # 母公司自身這筆 Affiliation 的合資橋接判斷要看母公司自己
+                    # （represented_id）的相異法人董事數，不是子公司 cid 的——
+                    # 兩者是不同的公司節點，不能共用 can_merge。
+                    parent_can_merge = not_hub and represented_id not in coinvestee_cids
                     collected.append(
                         Affiliation(
                             company=represented_name,
@@ -549,7 +703,7 @@ def _collect_hop(
                             person_id=represented_id,
                             tier="A",
                             shares=None,
-                            merge=can_merge,
+                            merge=parent_can_merge,
                         )
                     )
             key = (cid, "A", represented_norm)
@@ -596,6 +750,7 @@ def _bfs_neighborhood(
     max_companies: int,
     hub_name_threshold: int,
     hub_seat_threshold: int,
+    coinvestee_director_threshold: int = DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD,
 ) -> list[Affiliation]:
     visited: set[str] = {root_company_id}
     frontier: set[str] = {root_company_id}
@@ -607,7 +762,13 @@ def _bfs_neighborhood(
             break
 
         expand_person_norms, expand_represented_norms = _collect_hop(
-            conn, frontier, hub_name_threshold, hub_seat_threshold, collected, collected_keys
+            conn,
+            frontier,
+            hub_name_threshold,
+            hub_seat_threshold,
+            collected,
+            collected_keys,
+            coinvestee_director_threshold,
         )
 
         next_frontier: set[str] = set()
@@ -646,7 +807,13 @@ def _bfs_neighborhood(
     # 不能因為迴圈次數用完就漏掉，故額外收一次（不再繼續往外展開）。
     if frontier:
         _collect_hop(
-            conn, frontier, hub_name_threshold, hub_seat_threshold, collected, collected_keys
+            conn,
+            frontier,
+            hub_name_threshold,
+            hub_seat_threshold,
+            collected,
+            collected_keys,
+            coinvestee_director_threshold,
         )
 
     return collected

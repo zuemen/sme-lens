@@ -57,6 +57,13 @@ class Affiliation:
     （hidden_links 看得到、標成 bridge_only），只是不會被 detect_groups
     拿來當作合併兩家公司的依據——「兩家公司都有中國信託的席次」是行員該看到
     的資訊，不代表這兩家公司是同一個集團。
+
+    同一個道理反過來也成立：一家公司若被數個互不相干的法人共同派任董事
+    （合資公司、創投被投資公司），那是共同投資，不是這些法人所屬的集團
+    因此合而為一——見 smelens.data.gcis.DEFAULT_COINVESTEE_DIRECTOR_THRESHOLD。
+    merge=False 因此可能來自邊的任一端：機構股東本身，或是被多方共同持有
+    董事席次的被投資公司。build_company_graph 對兩者一視同仁（見該函式
+    docstring「按 (company, person) 逐邊判斷」一節）。
     """
 
     company: str
@@ -98,8 +105,22 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
 
     邊屬性另有 bridge_only：True 代表這條邊目前的共用實體全部是
     Affiliation.merge==False（機構股東等橋接點），detect_groups 不會用它來
-    合併兩家公司；只要其中一個共用實體 merge==True，這條邊就是可合併的
-    真實邊（bridge_only=False），機構橋接不會蓋掉真正的控股關係證據。
+    合併兩家公司；只要其中一個共用實體讓這條邊兩端都同意「可合併」
+    （見下方「按 (company, person) 逐邊判斷」），這條邊就是可合併的真實邊
+    （bridge_only=False），機構橋接不會蓋掉真正的控股關係證據。
+
+    按 (company, person) 逐邊判斷，不是按 person 整體判斷：merge 旗標记在
+    單一 Affiliation（某公司—某實體這一筆關係）上，但「這個實體是不是橋接
+    點」與「這家公司是不是橋接點」是兩個獨立且對稱的問題——機構橋接（銀行
+    在數十家公司掛法人董事席次）與合資橋接（一家合資公司被數個不相干法人
+    共同派任董事）都會讓同一個 person_key 底下混著「該合併」與「不該合併」
+    的公司。若只看 person 整體聚合（例如「這個人只要有一筆 merge=True 就
+    整體視為可合併」），合資橋接公司自己的 merge=False 會被它某一個董事的
+    其他真正子公司的 merge=True 蓋掉，橋接防護就形同虛設。故本函式改成：
+    對每一對公司 (u, v) 透過某 person 相連時，只有當 u 這一端與 v 這一端
+    各自對這個 person 的 Affiliation 都同意 merge=True，這條邊才可合併——
+    兩端都要同意，任一端說「這是橋接點」就不能合併，機構橋接與合資橋接
+    因此可以共用同一套機制，不必各自維護一份判斷邏輯。
     """
     raw = list(affiliations)
 
@@ -122,18 +143,19 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
 
     by_person: dict[str, set[str]] = {}
     person_tier: dict[str, str] = {}
-    person_merge: dict[str, bool] = {}
+    # (company_key, person_key) → 這一筆關係是否可作合併依據。同一對 (公司,
+    # 實體) 若因重覆列而出現多筆 Affiliation，維持既有慣例以 OR 聚合——
+    # 那是同一份資料重覆申報，不是機構橋接／合資橋接要處理的不同意義來源。
+    pair_merge: dict[tuple[str, str], bool] = {}
     for item in raw:
         pk = person_key(item)
-        by_person.setdefault(pk, set()).add(company_key(item))
+        ck = company_key(item)
+        by_person.setdefault(pk, set()).add(ck)
         # "A" 一旦成立就不再降級：同一個 person_key 若同時被 tier="A" 與
         # tier="B" 的 Affiliation 指到（資料不一致或刻意混報），信心以較高者為準。
         if person_tier.get(pk) != "A":
             person_tier[pk] = item.tier
-        # merge 同理：同一個實體只要有一筆 Affiliation 說「這是可合併的」
-        # （merge=True），就不因為另一筆混報 merge=False 而被降級為機構橋接點。
-        if not person_merge.get(pk, False):
-            person_merge[pk] = item.merge
+        pair_merge[(ck, pk)] = pair_merge.get((ck, pk), False) or item.merge
 
     g = nx.Graph()
     for item in raw:
@@ -141,8 +163,10 @@ def build_company_graph(affiliations: Iterable[Affiliation]) -> nx.Graph:
     for person, companies in by_person.items():
         person_name = person_display[person]
         tier = person_tier.get(person, "B")
-        can_merge = person_merge.get(person, True)
         for u, v in combinations(sorted(companies), 2):
+            # 兩端都要同意可合併，任一端是機構橋接或合資橋接就不行——見上方
+            # docstring「按 (company, person) 逐邊判斷」一節。
+            can_merge = pair_merge.get((u, person), False) and pair_merge.get((v, person), False)
             if g.has_edge(u, v):
                 data = g[u][v]
                 data["weight"] += 1

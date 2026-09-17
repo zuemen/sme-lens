@@ -11,6 +11,7 @@ from smelens.credit.group import build_company_graph, detect_groups, hidden_link
 from smelens.data.gcis import (
     VACANCY_PLACEHOLDERS,
     CorporateDirectorEdge,
+    classify_coinvestee_companies,
     classify_hub_entities,
     corporate_edges_to_affiliations,
     extract_neighborhood,
@@ -168,6 +169,116 @@ def test_hub_entities_bridge_without_merging_groups():
     # 5 家子公司＋銀行自己，唯一的共同點是機構橋接實體，理應各自獨立，不歸同一集團。
     assert len(set(groups.values())) == 6
     assert groups["某銀行"] not in {groups[f"C{i}公司"] for i in range(5)}
+
+
+def test_classify_coinvestee_companies_marks_companies_at_or_above_threshold():
+    """相異法人董事數達門檻的公司才算合資橋接實體，未達門檻的一般子公司不算。
+
+    合資公司「X」被 4 個互不相干的法人（A1～D1）共同代表出任董事；一般
+    子公司「Y」只被 2 個法人共同代表——用門檻 4 分類，前者應入選、後者不該。
+    """
+    edges = [_edge("X", f"法人{i}", represented_id=f"P{i}") for i in range(4)]
+    edges += [_edge("Y", "法人0", represented_id="P0")]
+    edges += [_edge("Y", "法人1", represented_id="P1")]
+
+    coinvestees = classify_coinvestee_companies(edges, director_threshold=4)
+
+    assert "X" in coinvestees
+    assert "Y" not in coinvestees
+
+
+def test_classify_coinvestee_companies_counts_by_identifier_not_name_string():
+    """同一統編、不同名稱寫法的法人董事要合併計數，不因寫法不同而虛增相異數。
+
+    公司「X」被 4 筆列代表，但其中 2 筆其實是同一個法人（P0）的不同名稱
+    寫法——相異法人董事數應是 3，不是 4，門檻 4 不該命中。
+    """
+    edges = [
+        _edge("X", "某法人股份有限公司", represented_id="P0"),
+        _edge("X", "某法人（股）公司", represented_id="P0"),
+        _edge("X", "法人1", represented_id="P1"),
+        _edge("X", "法人2", represented_id="P2"),
+    ]
+
+    coinvestees = classify_coinvestee_companies(edges, director_threshold=4)
+
+    assert "X" not in coinvestees
+    assert "X" in classify_coinvestee_companies(edges, director_threshold=3)
+
+
+def test_classify_hub_entities_and_coinvestee_companies_are_mirror_images():
+    """機構橋接（一個法人代表太多家）與合資橋接（一家公司被太多法人代表）是
+    同一套「分組後計數相異值」邏輯，只是分組方向對調——用同一組資料的
+    「轉置」驗證兩個分類函式確實共用同一種計數方式，不是兩套各自維護的邏輯。
+
+    原始資料：「某銀行」代表出任 5 家公司董事（機構橋接案例）。
+    轉置資料：「某公司」被 5 個相異法人共同代表出任董事（合資橋接案例）
+    ——把 company_id 與 represented_id 對調角色即可，計數應完全對應。
+    """
+    hub_edges = [_edge(f"C{i}", "某銀行", represented_id="B1") for i in range(5)]
+    coinvestee_edges = [_edge("某公司", f"法人{i}", represented_id=f"C{i}") for i in range(5)]
+
+    hubs = classify_hub_entities(hub_edges, seat_threshold=5)
+    coinvestees = classify_coinvestee_companies(coinvestee_edges, director_threshold=5)
+
+    assert "pid:B1" in hubs
+    assert "某公司" in coinvestees
+
+
+def test_corporate_edges_to_affiliations_marks_coinvestee_companies_as_non_merging():
+    """合資橋接公司轉出的「作為子公司被代表」Affiliation 一律 merge=False；
+    各法人自身（母公司）的 Affiliation 不受影響，仍照機構橋接門檻單獨判斷。
+    """
+    edges = [_edge("X", f"法人{i}", represented_id=f"P{i}") for i in range(4)]
+    edges += [_edge("Y", "法人0", represented_id="P0")]  # Y 只有一個法人董事，非橋接
+
+    affiliations = list(
+        corporate_edges_to_affiliations(
+            edges, hub_seat_threshold=5, coinvestee_director_threshold=4
+        )
+    )
+
+    x_affs = [a for a in affiliations if a.company_id == "X"]
+    y_affs = [a for a in affiliations if a.company_id == "Y"]
+    self_affs = [a for a in affiliations if a.role == "法人董事（母公司自身）"]
+    assert x_affs and all(a.merge is False for a in x_affs)
+    assert y_affs and all(a.merge is True for a in y_affs)
+    assert self_affs and all(a.merge is True for a in self_affs), (
+        "各法人自身只代表 X 一次、遠低於機構橋接門檻，不該被合資橋接誤標"
+    )
+
+
+def test_coinvestee_companies_bridge_without_merging_groups():
+    """合資公司的邊仍畫進圖裡（bridge_only 標記），但 detect_groups 不會拿它
+    合併兩個原本不相干的法人家族——這正是機構橋接修復的鏡像：機構橋接防
+    「一個法人代表太多家」，這裡防「一家公司被太多不同法人代表」。
+
+    「X公司」被法人 A、B、C、D 共同代表出任董事；A～D 各自另外還控股一家
+    真正的子公司（ASUB～DSUB）。合資橋接修復後：A～D 各自與自己的子公司
+    仍正確歸戶為一個集團，但不會因為都在「X公司」掛席次就被併成同一個
+    超大集團，「X公司」自己也維持孤立。
+    """
+    parents = ["A", "B", "C", "D"]
+    edges = [_edge("X", f"{p}公司", represented_id=f"{p}1") for p in parents]
+    edges += [_edge(f"{p}SUB", f"{p}公司", represented_id=f"{p}1") for p in parents]
+
+    affiliations = list(
+        corporate_edges_to_affiliations(
+            edges, hub_seat_threshold=5, coinvestee_director_threshold=4
+        )
+    )
+    graph = build_company_graph(affiliations)
+
+    for u, v, data in graph.edges(data=True):
+        if "X公司" in (u, v):
+            assert data["bridge_only"] is True
+
+    groups = detect_groups(graph)
+    for p in parents:
+        assert groups[f"{p}公司"] == groups[f"{p}SUB公司"]
+    for p, q in zip(parents, parents[1:]):
+        assert groups[f"{p}公司"] != groups[f"{q}公司"]
+    assert groups["X公司"] not in {groups[f"{p}公司"] for p in parents}
 
 
 def test_a_tier_edge_outranks_b_tier_in_hidden_links():
@@ -352,6 +463,56 @@ def test_tier_a_and_tier_b_stay_structurally_separable(tmp_path: Path):
         and link["shared_persons"] == ["王小明"]
         for link in candidates
     )
+
+
+_COINVESTEE_NEIGHBORHOOD_CSV = """統一編號,公司名稱,職稱,姓名,所代表法人,持有股份數
+00000001,甲投資股份有限公司,董事長,王一,,1000
+00000002,乙投資股份有限公司,董事長,王二,,1000
+00000003,丙投資股份有限公司,董事長,王三,,1000
+00000004,丁投資股份有限公司,董事長,王四,,1000
+00000010,Z合資股份有限公司,董事,甲代表,甲投資股份有限公司,1000
+00000010,Z合資股份有限公司,董事,乙代表,乙投資股份有限公司,1000
+00000010,Z合資股份有限公司,董事,丙代表,丙投資股份有限公司,1000
+00000010,Z合資股份有限公司,董事,丁代表,丁投資股份有限公司,1000
+00000011,甲子公司,董事,某代表,甲投資股份有限公司,500
+00000012,乙子公司,董事,某代表,乙投資股份有限公司,500
+"""
+
+
+def test_extract_neighborhood_coinvestee_bridges_without_merging_groups(tmp_path: Path):
+    """BFS 鄰域展開這一側也要有合資橋接防護，不只全國批次的
+    corporate_edges_to_affiliations——這是同一個修復，兩個入口都要生效。
+
+    「Z合資」被甲、乙、丙、丁四家互不相干的投資公司共同代表出任董事（相異
+    法人董事數 4，達門檻）；甲投資另外控股甲子公司，乙投資另外控股乙子
+    公司。合資橋接修復後：甲投資與甲子公司仍正確歸戶同一集團，乙投資與
+    乙子公司也是，但這兩個集團不會因為都在「Z合資」掛席次而被併成一個，
+    「Z合資」自己也維持孤立。
+    """
+    csv_path = tmp_path / "coinvestee_neighborhood.csv"
+    csv_path.write_text(_COINVESTEE_NEIGHBORHOOD_CSV, encoding="utf-8-sig")
+
+    neighborhood = extract_neighborhood(
+        csv_path,
+        "00000011",
+        depth=2,
+        max_companies=50,
+        coinvestee_director_threshold=4,
+    )
+    graph = build_company_graph(neighborhood)
+    groups = detect_groups(graph)
+
+    assert groups["甲子公司"] == groups["甲投資股份有限公司"]
+    assert groups["乙子公司"] == groups["乙投資股份有限公司"]
+    assert groups["甲投資股份有限公司"] != groups["乙投資股份有限公司"]
+    assert groups["Z合資股份有限公司"] not in {
+        groups["甲投資股份有限公司"],
+        groups["乙投資股份有限公司"],
+    }
+
+    for u, v, data in graph.edges(data=True):
+        if "Z合資股份有限公司" in (u, v):
+            assert data["bridge_only"] is True
 
 
 def test_extract_neighborhood_rejects_invalid_depth():
