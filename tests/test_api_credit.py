@@ -159,6 +159,70 @@ def test_group_endpoint_rejects_empty_affiliations():
     assert response.status_code == 400
 
 
+def test_group_endpoint_keeps_tier_b_candidates_out_of_confirmed_groups():
+    """tier="A"／merge=True 才進 groups；tier="B"／merge=False 只能是候選，
+    在 hidden_links 裡標成 bridge_only，不得被 detect_groups 併入同一集團。
+
+    這是一詮精密工業走查暴露的問題（A 層 4 家子公司證據紮實，B 層「李家緯」
+    單一姓名比對的 11 家不該與前者混成一份「15 家集團」）在 API 層的對應
+    測試：呼叫端明確標好兩層信心，回應必須維持這個區隔，不能被一次歸戶
+    結果混為一談。
+    """
+    response = client.post(
+        "/group",
+        json={
+            "affiliations": [
+                {
+                    "company": "母公司",
+                    "person": "母公司",
+                    "role": "法人董事（母公司自身）",
+                    "company_id": "P1",
+                    "person_id": "P1",
+                    "tier": "A",
+                    "merge": True,
+                },
+                {
+                    "company": "子公司甲",
+                    "person": "母公司",
+                    "role": "法人董事",
+                    "company_id": "S1",
+                    "person_id": "P1",
+                    "tier": "A",
+                    "merge": True,
+                },
+                {
+                    "company": "子公司甲",
+                    "person": "掛名董事",
+                    "role": "董事",
+                    "tier": "B",
+                    "merge": False,
+                },
+                {
+                    "company": "疑似關聯公司",
+                    "person": "掛名董事",
+                    "role": "董事",
+                    "tier": "B",
+                    "merge": False,
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["groups"]["母公司"] == body["groups"]["子公司甲"]
+    assert body["groups"]["疑似關聯公司"] != body["groups"]["子公司甲"]
+
+    candidate = next(
+        link
+        for link in body["hidden_links"]
+        if {link["company_a"], link["company_b"]} == {"子公司甲", "疑似關聯公司"}
+    )
+    assert candidate["tier"] == "B"
+    assert candidate["bridge_only"] is True
+    assert candidate["shared_persons"] == ["掛名董事"]
+
+
 def test_credit_endpoint_keeps_target_when_graph_truncated(monkeypatch):
     """授信對象即使分數不夠高，也不得被截斷邏輯排除在附圖之外。
 

@@ -360,6 +360,15 @@ class AffiliationInput(BaseModel):
     company_id（公司統一編號）與 person_id（自然人識別碼）皆為選填，一旦提供
     即為歸戶依據，優先於名稱字串——見 smelens.credit.group.Affiliation 的
     docstring：名稱比對抓不出「同名不同人」也擋不住「同人換名」，identifier 才行。
+
+    tier／merge 預設值與 smelens.credit.group.Affiliation 完全一致（"B"／
+    True），既有呼叫方（前端「集團歸戶」示範頁的申報名冊、手動輸入）不填
+    這兩個欄位時，行為與修復前逐字一致。新欄位存在的目的是讓銀行／全國
+    董監事資料（smelens.data.gcis）等「兩層信心」來源的名冊也能原樣餵進
+    /group：tier="A"（法人董事，無姓名歧義）配合 merge=True 才會被
+    detect_groups 拿來合併集團；tier="B"（純姓名比對）沒有身分證字號佐證，
+    要明確傳 merge=False 才會被當成候選、不逕行歸戶——本 API 不代替呼叫方
+    決定這件事，是否合併由呼叫方依資料信心自行標註。
     """
 
     company: str
@@ -367,6 +376,8 @@ class AffiliationInput(BaseModel):
     role: str = "董監事"
     company_id: str | None = None
     person_id: str | None = None
+    tier: str = "B"
+    merge: bool = True
 
 
 class GroupRequest(BaseModel):
@@ -455,6 +466,8 @@ def group(req: GroupRequest, x_api_key: str | None = Header(default=None)) -> di
             role=a.role,
             company_id=a.company_id,
             person_id=a.person_id,
+            tier=a.tier,
+            merge=a.merge,
         )
         for a in req.affiliations
     )

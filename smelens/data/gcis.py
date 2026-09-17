@@ -14,7 +14,13 @@
   自然人姓名那樣浮濫撞名。這層的群組歸戶站得住腳，不需要銀行另外核對身分。
 - B 層（自然人董事關係，tier="B"）：純靠姓名字串相同判斷「可能是同一人」，
   是候選清單，不是定論——銀行要拿自己 KYC 留存的身分證字號才能把候選收斂
-  成確認的關聯，本模組不假裝能做到這一步。
+  成確認的關聯，本模組不假裝能做到這一步。因此本模組所有 B 層 Affiliation
+  一律 merge=False：這種共用關係仍會入圖、仍會被 hidden_links 回報成候選
+  （帶共用姓名、tier="B"、bridge_only=True），但 detect_groups 不會拿它把
+  兩家公司併成同一個歸戶集團——集團歸戶（`groups`）只由 A 層無姓名歧義的
+  證據撐起，B 層只能是交給銀行拿身分證字號解析的候選清單，兩者在輸出上
+  必須是可分開看的兩個東西，不能被一次歸戶結果混著呈現成十五家「同一個
+  集團」。
 
 董監事資料集裡的「缺額」類佔位字串必須先剔除，否則會把好幾千個空缺席次
 誤判成同一個「人」，把互不相干的公司全部併成一個假集團。
@@ -79,6 +85,13 @@ def load_affiliations(csv_path: str | Path, *, limit: int | None = None) -> Iter
     company_id 一律填入統一編號（無歧義）；person_id 留 None——資料集本身
     沒有身分證字號可填，硬編一個假的 identifier 只會製造「看起來已核實」
     的錯覺。tier 固定為 "B"，因為這一層天生就只能靠姓名比對。
+
+    merge 固定為 False：B 層沒有身分證字號佐證，純姓名字串比對必然把同名
+    不同人的公司誤併（全台「陳建宏」一個名字掛名 411 家公司，見
+    docs/GCIS_FINDINGS.md）。這條關係仍會入圖、仍會被 hidden_links 回報成
+    候選（帶共用姓名與 tier="B"），但 detect_groups 不會拿它把兩家公司併成
+    同一個歸戶集團——集團歸戶只能由 A 層（無姓名歧義）證據撐起，B 層永遠是
+    交給銀行拿自己 KYC 身分證字號資料解析的候選清單，不可逕行歸戶。
     limit 只在測試或抽樣時使用；正式流程不應該傳。
     """
     count = 0
@@ -97,6 +110,7 @@ def load_affiliations(csv_path: str | Path, *, limit: int | None = None) -> Iter
             person_id=None,
             tier="B",
             shares=_parse_shares(row[COL_SHARES]),
+            merge=False,
         )
 
 
@@ -237,10 +251,29 @@ def corporate_edges_to_affiliations(
     兩家公司併成同一個歸戶集團，避免銀行、政府基金等把大半資本市場透過
     遞移閉包併成一個假集團（全國實測：不過濾時最大群組 7,187 家公司，
     見 docs/GCIS_FINDINGS.md）。
+
+    根因修復——母公司要進自己的歸戶群組：改版前只把「所代表法人」當成連結
+    兩家*子公司*的橋（子公司 A、子公司 B 因共用同一法人代表而連邊），母公司
+    本身從未被畫進圖裡，於是「一詮精密工業」帶出 4 家子公司的歸戶群組裡完全
+    找不到一詮精密工業自己——這正好把銀行法「關係企業」最在意的母公司排除
+    在曝險歸戶外，倒果為因。修法：所代表法人名稱一旦能對照回統一編號
+    （represented_id 非 None），就額外多送一筆「母公司自己」的 Affiliation
+    （company=person=該法人本身、company_id=person_id=represented_id）。
+    這筆 Affiliation 與每一筆子公司的 A 層 Affiliation 共用同一個
+    person_key（都是同一個 represented_id），build_company_graph 的共用實體
+    機制就會把母公司節點與每一家子公司節點直接連邊，不必再繞經自然人姓名
+    重疊才勉強接上。查不到統一編號的所代表法人（約 19%，多為政府機關、
+    境外法人、基金會，見 docs/GCIS_FINDINGS.md）本就不是這份資料集裡的
+    公司節點，沒有母公司節點可連，維持現狀退回名稱比對，信心不變、也不會
+    被靜默丟棄——子公司之間仍照舊靠名稱字串共用同一個「所代表法人」而連邊。
+    同一個母公司在多筆邊裡重覆出現時，這筆自身 Affiliation 只送一次
+    （seen_parents 去重），避免無意義地重覆同一份資料。
     """
     hub_ids = classify_hub_entities(edges, seat_threshold=hub_seat_threshold)
+    seen_parents: set[str] = set()
     for edge in edges:
         key = _represented_identity_key(edge)
+        can_merge = key not in hub_ids
         yield Affiliation(
             company=edge.company_name,
             person=edge.represented_name,
@@ -249,8 +282,20 @@ def corporate_edges_to_affiliations(
             person_id=edge.represented_id,
             tier="A",
             shares=edge.shares,
-            merge=key not in hub_ids,
+            merge=can_merge,
         )
+        if edge.represented_id and key not in seen_parents:
+            seen_parents.add(key)
+            yield Affiliation(
+                company=edge.represented_name,
+                person=edge.represented_name,
+                role="法人董事（母公司自身）",
+                company_id=edge.represented_id,
+                person_id=edge.represented_id,
+                tier="A",
+                shares=None,
+                merge=can_merge,
+            )
 
 
 #: 一次性索引的存放目錄。已在 .gitignore 中整批排除（見 data/cache/.gitkeep），
@@ -484,6 +529,29 @@ def _collect_hop(
         cid, company_name, role, person_name, person_norm = r[0], r[1], r[2], r[3], r[4]
         represented_name, represented_norm, represented_id, shares = r[5], r[6], r[7], r[8]
         if represented_norm:
+            can_merge = represented_norm not in hub_represented_norms
+            # 根因修復：所代表法人（母公司）查得到統一編號時，額外收一筆「母公司
+            # 自己」的 Affiliation，讓母公司節點透過同一個 person_key（represented_id）
+            # 直接與每一家子公司連邊，不再只靠子公司之間共用母公司這個「人」而漏掉
+            # 母公司自身——見 corporate_edges_to_affiliations 的同一段修復說明。
+            # 用獨立的鍵命名空間（前綴 "SELF"）去重，同一個母公司在多筆列裡重覆
+            # 出現時只送一次，不受下方子公司列去重鍵（cid, "A", ...）影響。
+            if represented_id:
+                self_key = ("SELF", "A", represented_norm)
+                if self_key not in collected_keys:
+                    collected_keys.add(self_key)
+                    collected.append(
+                        Affiliation(
+                            company=represented_name,
+                            person=represented_name,
+                            role="法人董事（母公司自身）",
+                            company_id=represented_id,
+                            person_id=represented_id,
+                            tier="A",
+                            shares=None,
+                            merge=can_merge,
+                        )
+                    )
             key = (cid, "A", represented_norm)
             if key in collected_keys:
                 continue
@@ -497,7 +565,7 @@ def _collect_hop(
                     person_id=represented_id,
                     tier="A",
                     shares=shares,
-                    merge=represented_norm not in hub_represented_norms,
+                    merge=can_merge,
                 )
             )
         else:
@@ -514,6 +582,7 @@ def _collect_hop(
                     person_id=None,
                     tier="B",
                     shares=shares,
+                    merge=False,
                 )
             )
 

@@ -63,6 +63,19 @@ def test_load_affiliations_carries_company_id_and_tier_b():
         assert a.company_id  # 統一編號一律非空
 
 
+def test_load_affiliations_marks_tier_b_as_non_merging():
+    """B 層沒有身分證字號佐證，一律 merge=False——只能是候選，不可逕行歸戶。
+
+    這是兩層證據結構性分離的根本依據：若 B 層預設 merge=True，一詮精密工業
+    走查案例裡「李家緯」單一姓名比對就會把 11 家公司強行併進歸戶群組，讓
+    A 層（4 家子公司＋母公司）真正確認的關聯被淹沒在同一份「15 家集團」裡。
+    """
+    affiliations = list(load_affiliations(FIXTURE))
+
+    assert affiliations
+    assert all(a.merge is False for a in affiliations)
+
+
 def test_load_affiliations_keeps_company_without_unified_number_suffix():
     """公司名稱含「（無統編）」樣態的列仍須正常載入，不能被當成髒資料跳過。"""
     affiliations = list(load_affiliations(FIXTURE))
@@ -136,17 +149,25 @@ def test_corporate_edges_to_affiliations_marks_hub_entities_as_non_merging():
 def test_hub_entities_bridge_without_merging_groups():
     """機構橋接實體的邊仍畫進圖裡（bridge_only 標記），但 detect_groups 不會
     拿它合併兩家公司——這正是全國實測 7,187 家假集團問題的修復核心行為。
+
+    「某銀行」本身現在也會因為 represented_id 查得到而多一筆「母公司自己」
+    的 Affiliation（見 corporate_edges_to_affiliations 的根因修復），故圖裡
+    多了「某銀行」這個節點——但它一樣是機構橋接實體（席次數達門檻），與它
+    相連的邊一律 bridge_only=True，故「某銀行」自己也維持孤立，不與任何一家
+    子公司合併：6 個節點（5 家子公司＋銀行自己）各自獨立成一個集團。
     """
     edges = [_edge(f"C{i}", "某銀行", represented_id="B1") for i in range(5)]
     affiliations = list(corporate_edges_to_affiliations(edges, hub_seat_threshold=5))
 
     graph = build_company_graph(affiliations)
+    assert "某銀行" in graph
     for u, v, data in graph.edges(data=True):
         assert data["bridge_only"] is True
 
     groups = detect_groups(graph)
-    # 5 家公司唯一的共同點是機構橋接實體，理應各自獨立，不歸同一集團。
-    assert len(set(groups.values())) == 5
+    # 5 家子公司＋銀行自己，唯一的共同點是機構橋接實體，理應各自獨立，不歸同一集團。
+    assert len(set(groups.values())) == 6
+    assert groups["某銀行"] not in {groups[f"C{i}公司"] for i in range(5)}
 
 
 def test_a_tier_edge_outranks_b_tier_in_hidden_links():
@@ -243,6 +264,94 @@ def test_extract_neighborhood_includes_a_tier_corporate_director_edges(tmp_path:
     a_tier = [a for a in neighborhood if a.tier == "A"]
     assert a_tier, "應收集到甲光電、丙精工之間的 A 層關係"
     assert all(a.merge is True for a in a_tier)
+
+
+_A_TIER_WITH_RESOLVABLE_PARENT_CSV = """統一編號,公司名稱,職稱,姓名,所代表法人,持有股份數
+00000001,甲光電股份有限公司,董事,張三,乙投資股份有限公司,1000
+00000002,丙精工股份有限公司,董事,李四,乙投資股份有限公司,2000
+00000009,乙投資股份有限公司,董事長,陳大文,,5000
+"""
+
+
+def test_corporate_parent_lands_in_the_same_group_as_its_subsidiaries(tmp_path: Path):
+    """根因修復——母公司（所代表法人查得到統一編號）必須進自己的歸戶群組。
+
+    「乙投資」在本資料集裡自己也是一家公司（統編 00000009），且是甲光電、
+    丙精工的所代表法人。修復前：只有甲光電、丙精工彼此連邊，乙投資本身
+    從未被畫進圖裡——母公司在自己的集團裡完全找不到，這正是走查一詮精密
+    工業時發現的核心defect。修復後：乙投資節點應直接與兩家子公司連邊，
+    detect_groups 三者同屬一個歸戶群組。
+    """
+    csv_path = tmp_path / "a_tier_with_parent.csv"
+    csv_path.write_text(_A_TIER_WITH_RESOLVABLE_PARENT_CSV, encoding="utf-8-sig")
+
+    neighborhood = extract_neighborhood(csv_path, "00000001", depth=1, max_companies=50)
+
+    graph = build_company_graph(neighborhood)
+    assert "乙投資股份有限公司" in graph
+    assert graph.has_edge("乙投資股份有限公司", "甲光電股份有限公司")
+    assert graph.has_edge("乙投資股份有限公司", "丙精工股份有限公司")
+
+    groups = detect_groups(graph)
+    parent_group = groups["乙投資股份有限公司"]
+    assert parent_group == groups["甲光電股份有限公司"] == groups["丙精工股份有限公司"]
+
+
+def test_corporate_parent_self_affiliation_not_fabricated_when_unresolvable(tmp_path: Path):
+    """所代表法人查不到統一編號（約 19% 的政府機關／境外法人／基金會等）時，
+    不得無中生有出一個母公司節點——維持既有的名稱比對退回，子公司之間仍
+    因共用「所代表法人」名稱字串而連邊，但沒有可靠的母公司公司節點可連。
+    """
+    csv_path = tmp_path / "a_tier_unresolved.csv"
+    csv_path.write_text(_A_TIER_NEIGHBORHOOD_CSV, encoding="utf-8-sig")
+
+    neighborhood = extract_neighborhood(csv_path, "00000001", depth=1, max_companies=50)
+
+    graph = build_company_graph(neighborhood)
+    assert "乙投資股份有限公司" not in graph
+    assert graph.has_edge("甲光電股份有限公司", "丙精工股份有限公司")
+
+
+_MIXED_TIER_CSV = """統一編號,公司名稱,職稱,姓名,所代表法人,持有股份數
+00000001,甲光電股份有限公司,董事,張三,乙投資股份有限公司,1000
+00000001,甲光電股份有限公司,監察人,王小明,,999
+00000002,丙精工股份有限公司,董事,李四,乙投資股份有限公司,2000
+00000003,戊顧問有限公司,董事,王小明,,3000
+00000009,乙投資股份有限公司,董事長,陳大文,,5000
+"""
+
+
+def test_tier_a_and_tier_b_stay_structurally_separable(tmp_path: Path):
+    """A 層（母子公司）與 B 層（單一姓名比對）在同一鄰域裡出現時，結果必須
+    可分開看，不能被一次 detect_groups 混成一個「集團」：
+
+    甲光電、丙精工都由乙投資派員代表出任董事（A 層，無姓名歧義）；甲光電、
+    戊顧問則只是恰好都有一位「王小明」董監事（B 層，僅一筆姓名比對）。
+    修復後，detect_groups 只把乙投資、甲光電、丙精工歸為一個集團——戊顧問
+    因為唯一的連結是 tier=B、merge=False，不會被拉進來，只會出現在
+    hidden_links 裡標成 bridge_only=True 的候選，並點名共用的自然人。
+    """
+    csv_path = tmp_path / "mixed_tier.csv"
+    csv_path.write_text(_MIXED_TIER_CSV, encoding="utf-8-sig")
+
+    neighborhood = extract_neighborhood(csv_path, "00000001", depth=1, max_companies=50)
+    graph = build_company_graph(neighborhood)
+    groups = detect_groups(graph)
+
+    parent_group = groups["乙投資股份有限公司"]
+    assert parent_group == groups["甲光電股份有限公司"] == groups["丙精工股份有限公司"]
+    assert groups["戊顧問有限公司"] != groups["甲光電股份有限公司"]
+
+    candidates = [
+        link
+        for link in hidden_links(graph, {})
+        if link["tier"] == "B" and link["bridge_only"]
+    ]
+    assert any(
+        {link["company_a"], link["company_b"]} == {"甲光電股份有限公司", "戊顧問有限公司"}
+        and link["shared_persons"] == ["王小明"]
+        for link in candidates
+    )
 
 
 def test_extract_neighborhood_rejects_invalid_depth():
