@@ -22,8 +22,9 @@ const PILLARS = [
     stage: '貸後',
     title: '早期預警',
     body: '上下游一家出事，圖上的鄰居就該亮燈——用同一張關係圖持續監控授信戶的關聯風險，而不是等到逾期才發現。',
-    to: '/credit',
-    cta: '看授信意見書 Demo',
+    // 這根柱子尚未實作。不給 to／cta：一個連到別根柱子頁面的按鈕，
+    // 比誠實標示「規劃中」更傷——評審點下去會發現被騙。
+    roadmap: '規劃中：風險圖樣偵測已完成（見授信意見書），尚未做成持續監控的關注名單。',
   },
 ]
 
@@ -83,9 +84,18 @@ export default function Landing() {
           {PILLARS.map((pillar) => (
             <Panel key={pillar.title} title={`${pillar.stage}．${pillar.title}`}>
               <p className="text-sm leading-relaxed text-muted">{pillar.body}</p>
-              <Link to={pillar.to} className="mt-4 inline-block text-sm font-semibold text-ink">
-                {pillar.cta} →
-              </Link>
+              {pillar.to && pillar.cta ? (
+                <Link to={pillar.to} className="mt-4 inline-block text-sm font-semibold text-ink">
+                  {pillar.cta} →
+                </Link>
+              ) : (
+                <p
+                  className="mt-4 text-xs leading-relaxed"
+                  style={{ color: 'var(--color-risk-med)' }}
+                >
+                  {pillar.roadmap}
+                </p>
+              )}
             </Panel>
           ))}
         </div>

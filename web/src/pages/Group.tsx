@@ -518,6 +518,7 @@ export default function Group() {
                   411 家公司），故這些只是候選，交由銀行以 KYC 既有身分資料解析。
                   標題寫「姓名欄」而非「自然人」是因為登記資料的姓名欄偶爾填的是法人名稱
                   （該列未填所代表法人時），這類列同樣只作候選、不作歸戶依據。
+                  <b>姓名已遮蔽</b>：本站為公開展示，自然人姓名一律以「陳○宏」形式呈現。
                 </p>
                 <ul className="mt-2 list-inside list-disc text-sm">
                   {gcis.candidates.slice(0, 12).map((row, index) => (
@@ -533,6 +534,11 @@ export default function Group() {
                 前端文案自行改寫，兩邊各寫一份就是漂移的開始。 */}
             <p className="text-xs leading-relaxed text-muted" data-testid="gcis-scope">
               {gcis.scope}
+            </p>
+            {/* privacy 與 scope 一樣由後端提供並原樣呈現：個資處理方式是對外承諾，
+                不該由前端文案各寫一份而漂移。 */}
+            <p className="text-xs leading-relaxed text-muted" data-testid="gcis-privacy">
+              {gcis.privacy}
             </p>
             <p className="text-xs leading-relaxed text-muted">資料來源：{gcis.source}</p>
           </div>

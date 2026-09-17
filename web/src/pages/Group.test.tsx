@@ -40,12 +40,13 @@ const GCIS_FIXTURE = {
       role: '法人董事',
     },
   ],
-  candidates: [{ company: '世銓科技股份有限公司', person: '王小明' }],
+  candidates: [{ company: '世銓科技股份有限公司', person: '王○明', masked: true }],
   elapsed_seconds: 0.23,
   neighborhood_companies: 128,
   neighborhood_truncated: false,
   neighborhood_frontier_remaining: 98,
   scope: '歸戶僅採 A 層（法人董事）證據，與全國索引一致；B 層只列候選，不合併。',
+  privacy: '本端點為公開展示用途，自然人姓名一律遮蔽為「陳○宏」形式後輸出。',
   source: '經濟部商業發展署 董監事資料集（政府資料開放授權條款－第 1 版）',
 }
 
@@ -184,6 +185,10 @@ describe('集團歸戶頁', () => {
     expect(screen.getByText('法人董事')).toBeDefined()
     // 適用範圍說明由後端提供並原樣呈現
     expect(screen.getByTestId('gcis-scope').textContent).toBe(GCIS_FIXTURE.scope)
+    // 個資處理方式必須原樣呈現：這是公開站台上對外的承諾，不能只寫在文件裡。
+    expect(screen.getByTestId('gcis-privacy').textContent).toBe(GCIS_FIXTURE.privacy)
+    // 候選姓名顯示的是後端遮蔽後的字串，畫面不得出現未遮蔽的真實姓名
+    expect(screen.getByText(/王○明/)).toBeDefined()
   })
 
   it('後端回 503（示範資料未就緒）時顯示後端訊息，不得退回離線快照', async () => {

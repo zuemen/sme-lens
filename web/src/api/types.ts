@@ -177,13 +177,17 @@ export interface GcisGroupResult {
     parent_id: string | null
     role: string
   }[]
-  /** B 層候選（自然人同名），僅供覆核，不參與合併。 */
-  candidates: { company: string; person: string }[]
+  /** B 層候選（姓名欄同名），僅供覆核，不參與合併。
+   *  person 已由後端遮蔽為「陳○宏」形式，masked 恆為 true——這是公開端點，
+   *  不得原樣輸出真實自然人姓名。 */
+  candidates: { company: string; person: string; masked: boolean }[]
   elapsed_seconds: number
   neighborhood_companies: number
   neighborhood_truncated: boolean
   neighborhood_frontier_remaining: number
   /** 證據強度與適用範圍的說明，由後端提供，畫面必須原樣呈現。 */
   scope: string
+  /** 個資處理方式的說明，同樣由後端提供並原樣呈現。 */
+  privacy: string
   source: string
 }
