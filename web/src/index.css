@@ -104,3 +104,33 @@ select {
 .nav-scroll::-webkit-scrollbar {
   display: none;
 }
+
+/* 觸控目標：Apple HIG 要求 44×44pt、Material 要求 48×48dp。實測本站在 390px
+   手機寬度下，導覽連結只有 20px 高、主按鈕 40–42px、「看 Demo」32px——用手指
+   點很容易誤觸旁邊的項目。評審多半是掃 QR 用手機看，這是實際會被感受到的
+   缺陷，不是紙上規範。
+   控制項（按鈕、選單、輸入框）全站一律拉到 44px；勾選類不套用，它們有自己
+   的尺寸慣例。 */
+button,
+select,
+textarea,
+input:not([type='checkbox']):not([type='radio']) {
+  min-height: 44px;
+}
+
+/* 視覺上是「獨立操作入口」的連結（導覽列、CTA、卡片上的前往連結）套這個類別，
+   讓它也達到 44px。段落內的行內連結不套——那是文字的一部分，不是觸控目標，
+   硬拉高反而會破壞行高。 */
+.tap {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* 減少行動瀏覽器點擊的 300ms 延遲，並移除點擊時的灰色高亮（我們有自己的
+   焦點與 hover 樣式）。 */
+a,
+button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}

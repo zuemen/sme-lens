@@ -162,11 +162,14 @@ export default function Credit() {
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-sm">
+          {/* 原生勾選框只有 13×13，手指不好點。整列拉到 44px（label 本身就是
+              可點範圍），方框放大到 18px。 */}
+          <label className="tap flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={withGroup}
               onChange={(event) => setWithGroup(event.target.checked)}
+              className="h-[18px] w-[18px]"
             />
             帶入集團歸戶脈絡
           </label>
@@ -175,7 +178,7 @@ export default function Credit() {
             type="button"
             onClick={run}
             disabled={loading}
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-50"
           >
             {loading ? '產生中…' : '產生授信意見書'}
           </button>

@@ -105,16 +105,19 @@ export default function EarlyWarn() {
       </div>
 
       <Panel title="指定已出事的授信戶">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+        <div className="flex w-full flex-wrap items-end gap-3">
+          <div className="w-full sm:w-auto">
             <label htmlFor="seed" className="block text-xs text-muted">
               出事戶（種子）
             </label>
+            {/* w-full：選項文字很長（「宏益企業（空殼中介，過水比 99%）」），
+                select 的內在寬度會把 390px 的手機版面撐破 11px 而出現橫向捲動。
+                限制在容器寬度內，文字由瀏覽器自行截斷。 */}
             <select
               id="seed"
               value={seed}
               onChange={(event) => setSeed(event.target.value)}
-              className="mt-1 rounded border border-line bg-panel px-3 py-2 text-base"
+              className="mt-1 w-full max-w-full rounded border border-line bg-panel px-3 text-base sm:w-auto"
             >
               {SEED_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -128,12 +131,12 @@ export default function EarlyWarn() {
             onClick={run}
             disabled={loading}
             data-testid="earlywarn-submit"
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-50"
           >
             {loading ? '計算中…' : '產生關注名單'}
           </button>
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-muted">
+        <p className="mt-3 max-w-3xl text-xs leading-relaxed text-muted">
           擴散只在關係圖上進行，不需要客戶配合、不需要新增任何申報欄位。
           授信餘額採與集團歸戶頁同一套示範數字。
         </p>

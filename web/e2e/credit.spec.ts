@@ -65,8 +65,11 @@ test('集團歸戶頁可用真實統一編號查公開登記資料', async ({ pa
 
   // 這條路徑刻意沒有離線快照可退：查到的必須是真的從公開登記資料展開的結果，
   // 所以這支測試同時也是「後端與隨附精簡索引都真的在」的驗證。
+  // 逾時給到 60 秒：這條路徑的第一次請求要把隨附的 14MB gz 解壓成 47MB 的
+  // SQLite（見 smelens.data.gcis.demo_index_path），在多個 worker 同時跑時
+  // 觀察到偶發超過 30 秒。不是效能問題，是一次性的冷啟動成本。
   await expect(page.getByTestId('gcis-company')).toHaveText('一詮精密工業股份有限公司', {
-    timeout: 30_000,
+    timeout: 60_000,
   })
   await expect(page.getByTestId('gcis-group-size')).toHaveText('4')
 

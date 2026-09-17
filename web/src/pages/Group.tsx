@@ -218,7 +218,7 @@ export default function Group() {
             type="button"
             onClick={run}
             disabled={loading}
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-50"
           >
             {loading ? '歸戶中…' : '執行集團歸戶'}
           </button>
@@ -416,7 +416,7 @@ export default function Group() {
               maxLength={8}
               value={companyId}
               onChange={(event) => setCompanyId(event.target.value)}
-              className="tabular mt-1 w-40 rounded border border-line bg-panel px-3 py-2 text-base"
+              className="tabular mt-1 w-40 max-w-full rounded border border-line bg-panel px-3 text-base"
             />
           </div>
           <button
@@ -424,7 +424,7 @@ export default function Group() {
             onClick={runGcis}
             disabled={gcisLoading}
             data-testid="gcis-submit"
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-50"
           >
             {gcisLoading ? '查詢中…' : '查集團歸戶'}
           </button>

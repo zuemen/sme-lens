@@ -137,7 +137,7 @@ export default function Screening() {
             type="button"
             onClick={run}
             disabled={loading}
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-50"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-50"
           >
             {loading ? '審查中…' : '執行出金審查'}
           </button>

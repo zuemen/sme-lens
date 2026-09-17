@@ -29,7 +29,7 @@ export default function App() {
   useEffect(warmUp, [])
 
   return (
-    <div className="min-h-screen bg-base text-ink">
+    <div className="min-h-dvh bg-base text-ink">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-ink focus:px-4 focus:py-2 focus:text-base"
@@ -42,7 +42,7 @@ export default function App() {
             標籤被折成「首／頁」「授信／意見／書」這種逐字斷行，而評審多半是掃
             QR 用手機進來的——第一眼就看到壞掉的導覽列。改為水平捲動＋不斷行：
             標籤永遠完整，超出寬度就橫向滑動。 */}
-        <nav className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
+        <nav className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-2">
           <span className="shrink-0 font-semibold">
             企鏡 <span className="text-muted">SME Lens</span>
           </span>
@@ -54,7 +54,7 @@ export default function App() {
                 end={item.to === '/'}
                 // 目前位置不只靠顏色標示，同時加粗並提供 aria-current
                 className={({ isActive }) =>
-                  `whitespace-nowrap ${isActive ? 'font-semibold text-ink' : 'text-muted'}`
+                  `tap whitespace-nowrap ${isActive ? 'font-semibold text-ink' : 'text-muted'}`
                 }
               >
                 {item.label}
@@ -63,7 +63,7 @@ export default function App() {
           </div>
           <NavLink
             to="/credit"
-            className="shrink-0 whitespace-nowrap rounded bg-ink px-4 py-1.5 text-sm font-semibold text-base"
+            className="tap shrink-0 whitespace-nowrap rounded bg-ink px-4 text-sm font-semibold text-base"
           >
             看 Demo
           </NavLink>

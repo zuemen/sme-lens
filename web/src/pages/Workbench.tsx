@@ -116,7 +116,7 @@ export default function Workbench() {
             type="button"
             onClick={() => load('tron')}
             disabled={!addressValid || loading}
-            className="rounded bg-ink px-5 py-2 font-semibold text-base disabled:opacity-40"
+            className="tap rounded bg-ink px-5 font-semibold text-base disabled:opacity-40"
           >
             {loading ? '查詢中…' : '抓取真實金流'}
           </button>
@@ -125,7 +125,7 @@ export default function Workbench() {
             type="button"
             onClick={() => load('example')}
             disabled={loading}
-            className="rounded border border-line px-5 py-2"
+            className="tap rounded border border-line px-5"
           >
             用內建範例圖
           </button>

@@ -99,10 +99,10 @@ export default function Landing() {
         </p>
 
         <div className="mt-7 flex flex-wrap gap-3">
-          <Link to="/group" className="rounded bg-ink px-5 py-2 font-semibold text-base">
+          <Link to="/group" className="tap rounded bg-ink px-5 font-semibold text-base">
             查任一真實統一編號
           </Link>
-          <Link to="/credit" className="rounded border border-line-strong px-5 py-2">
+          <Link to="/credit" className="tap rounded border border-line-strong px-5">
             看授信意見書 Demo
           </Link>
         </div>
@@ -122,7 +122,7 @@ export default function Landing() {
             </div>
           ))}
         </dl>
-        <p className="mt-4 text-xs leading-relaxed text-muted">
+        <p className="mt-4 max-w-3xl text-xs leading-relaxed text-muted">
           每一個數字皆由開源腳本對全量公開資料重跑產生，非估計值；重跑方式見原始碼的{' '}
           <span className="tabular">docs/GCIS_FINDINGS.md</span>。
         </p>
@@ -174,7 +174,7 @@ export default function Landing() {
           {PILLARS.map((pillar) => (
             <Panel key={pillar.title} title={`${pillar.stage}．${pillar.title}`}>
               <p className="text-sm leading-relaxed text-muted">{pillar.body}</p>
-              <Link to={pillar.to} className="mt-4 inline-block text-sm font-semibold text-ink">
+              <Link to={pillar.to} className="tap mt-2 text-sm font-semibold text-ink">
                 {pillar.cta} →
               </Link>
             </Panel>
@@ -198,11 +198,11 @@ export default function Landing() {
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
             to="/screening"
-            className="inline-block rounded border border-line-strong px-5 py-2 text-sm font-semibold"
+            className="tap rounded border border-line-strong px-5 text-sm font-semibold"
           >
             看出金審查 Demo
           </Link>
-          <Link to="/research" className="inline-block rounded border border-line px-5 py-2 text-sm">
+          <Link to="/research" className="tap rounded border border-line px-5 text-sm">
             看 AI 模型評估
           </Link>
         </div>

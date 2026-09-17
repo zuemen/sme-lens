@@ -70,7 +70,7 @@ export default function Research() {
             </tbody>
           </table>
         </div>
-        <p className="mt-4 text-xs leading-relaxed text-muted">
+        <p className="mt-4 max-w-3xl text-xs leading-relaxed text-muted">
           訓練設定：CPU、200 epochs、hidden 64、lr 0.01、加權 CrossEntropy（逆類別頻率）、
           weight decay 5e-4、seed 42；SNA 特徵為 in/out degree、PageRank、k-core、
           近似 betweenness（64 源點）之 z-score。
@@ -86,7 +86,7 @@ export default function Research() {
       </section>
 
       <Panel title="研究基礎">
-        <p className="text-sm leading-relaxed text-muted">
+        <p className="max-w-3xl text-sm leading-relaxed text-muted">
           設計選擇與改進方向根據對 14 個主流研究方向的深度調查：Elliptic／Elliptic2 基準、
           IBM Multi-GNN、時序 GNN、洗錢 typology、異質性 GNN、GNN 可解釋性、LLM + 圖、
           TRON／USDT 實證、商用系統、聯邦與隱私 AML 等。完整定位、五大領域痛點對應表與
