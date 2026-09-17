@@ -38,11 +38,15 @@ export default function App() {
       </a>
 
       <header className="border-b border-line">
-        <nav className="mx-auto flex max-w-6xl flex-wrap items-center gap-6 px-6 py-4">
-          <span className="font-semibold">
+        {/* 七個導覽項在手機寬度（390px）塞不進一行。原本用 flex-wrap，結果每個
+            標籤被折成「首／頁」「授信／意見／書」這種逐字斷行，而評審多半是掃
+            QR 用手機進來的——第一眼就看到壞掉的導覽列。改為水平捲動＋不斷行：
+            標籤永遠完整，超出寬度就橫向滑動。 */}
+        <nav className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-4">
+          <span className="shrink-0 font-semibold">
             企鏡 <span className="text-muted">SME Lens</span>
           </span>
-          <div className="flex gap-5 text-sm">
+          <div className="nav-scroll flex min-w-0 flex-1 gap-5 overflow-x-auto text-sm">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
@@ -50,7 +54,7 @@ export default function App() {
                 end={item.to === '/'}
                 // 目前位置不只靠顏色標示，同時加粗並提供 aria-current
                 className={({ isActive }) =>
-                  isActive ? 'font-semibold text-ink' : 'text-muted'
+                  `whitespace-nowrap ${isActive ? 'font-semibold text-ink' : 'text-muted'}`
                 }
               >
                 {item.label}
@@ -59,7 +63,7 @@ export default function App() {
           </div>
           <NavLink
             to="/credit"
-            className="ml-auto rounded bg-ink px-4 py-1.5 text-sm font-semibold text-base"
+            className="shrink-0 whitespace-nowrap rounded bg-ink px-4 py-1.5 text-sm font-semibold text-base"
           >
             看 Demo
           </NavLink>

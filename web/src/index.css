@@ -66,3 +66,41 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 首屏背景：以 CSS 畫一層極淡的格線與節點，呼應本作品的主題（企業關係圖），
+   不載入任何圖片——現場若無網路（見 docs/DEMO_SCRIPT.md 的全離線程序），
+   背景仍然完整呈現。對比刻意壓得極低，不影響其上文字的可讀性。 */
+.hero-grid {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.18) 1px, transparent 0),
+    linear-gradient(180deg, rgba(56, 189, 248, 0.05), transparent 70%);
+  background-size: 28px 28px, 100% 100%;
+  background-position: -14px -14px, 0 0;
+}
+
+/* 首屏大數字：不能直接用 .tabular——那是資料表用的等寬字體（IBM Plex Mono
+   沒有中文字），「102萬」的「萬」與「家」「條」「秒」會掉到系統備援字型，
+   跟前面的數字明顯不同一套，看起來像沒做完。這裡改用內文字體＋等距數字：
+   數字仍然對齊，中文與全站一致。 */
+.numeral {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 主張句裡的關鍵詞：用底線強調而非變色，避免與風險語意色（紅/黃/綠）混淆
+   ——那三個顏色在本系統裡有固定的語意，不可挪用於裝飾。 */
+.claim-underline {
+  text-decoration: underline;
+  text-decoration-color: var(--color-ring);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 5px;
+}
+
+/* 導覽列的水平捲動條在桌機上是多餘的視覺雜訊（項目本來就塞得進去），
+   但捲動能力必須保留給手機——只隱藏外觀，不關閉功能。 */
+.nav-scroll {
+  scrollbar-width: none;
+}
+.nav-scroll::-webkit-scrollbar {
+  display: none;
+}
