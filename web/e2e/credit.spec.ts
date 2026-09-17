@@ -108,3 +108,23 @@ test('貸後早期預警 Demo 全流程', async ({ page }) => {
   // 對照組（結構乾淨、三跳之外）不得被誤殺
   await expect(table).not.toContainText('禾昌五金')
 })
+
+test('可驗證憑證 Demo：憑證讓歸戶從兩戶併成一戶', async ({ page }) => {
+  await page.goto('/trust')
+
+  await expect(page.getByRole('heading', { name: /可驗證憑證/ })).toBeVisible()
+  await page.getByTestId('trust-submit').click()
+
+  // 這一頁的頭條：憑證把「姓名相同但無法確認」變成「身分經憑證確認」
+  await expect(page.getByTestId('trust-groups-after')).toHaveText('1', { timeout: 60_000 })
+  await expect(page.getByTestId('trust-promoted')).toHaveText('2')
+
+  // 升級紀錄要附完整授權鏈（法人 → QVI → GLEIF 根）
+  await expect(page.getByTestId('trust-table')).toContainText('一詮精密工業股份有限公司')
+
+  // 刻意無效的那份憑證必須被擋下，而且說得出原因
+  await expect(page.getByTestId('trust-rejected')).toContainText('無法回溯到信任根')
+
+  // 尚未錨定上鏈就要照實說，不得講成已上鏈
+  await expect(page.getByTestId('trust-anchored')).toContainText('尚未錨定')
+})

@@ -5,6 +5,7 @@ import type {
   GcisGroupResult,
   GroupResult,
   ScreenResult,
+  TrustVerifyResult,
   WorkbenchPayload,
 } from './types'
 
@@ -90,6 +91,19 @@ export function postGroup(body: {
   exposures?: Record<string, number>
 }): Promise<GroupResult> {
   return post<GroupResult>('/group', body)
+}
+
+/** 驗證可驗證憑證（vLEI OOR 角色憑證），把 B 層候選升級為 A 層可歸戶。 */
+export function postTrustVerify(body: {
+  affiliations: unknown[]
+  presentation: unknown
+  trust_root: string
+  authorised_by?: Record<string, string>
+  lei_to_company_id?: Record<string, string>
+  revoked_credential_ids?: string[]
+  anchor_reference?: string
+}): Promise<TrustVerifyResult> {
+  return post<TrustVerifyResult>('/trust/verify', body)
 }
 
 /** 貸後早期預警：指定已出事的授信戶，回傳帶證據路徑的關注名單。 */

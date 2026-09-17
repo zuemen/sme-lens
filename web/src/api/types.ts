@@ -217,3 +217,35 @@ export interface EarlyWarnResult {
   parameters: { alpha: number; threshold: number; max_hops: number }
   method_zh: string
 }
+
+/** 一筆經可驗證憑證升級的關聯。 */
+export interface TrustPromotion {
+  company: string
+  /** 已由後端遮蔽為「王○明」形式。 */
+  person: string
+  role: string
+  lei: string
+  company_id: string
+  issuer: string
+  /** 簽發者回溯到信任根的授權鏈：法人 → QVI → GLEIF 根。 */
+  issuer_chain: string[]
+  credential_id: string
+}
+
+/** POST /trust/verify 的回應。 */
+export interface TrustVerifyResult {
+  promoted: TrustPromotion[]
+  /** 被擋下來的憑證及原因——失敗要說得出為什麼。 */
+  rejected: string[]
+  affiliations: { company: string; person: string; role: string; tier: string; merge: boolean }[]
+  groups_before: number
+  groups_after: number
+  revocation: {
+    merkle_root: string
+    /** false 代表清單只在本機，尚未錨定上鏈；畫面必須照實呈現。 */
+    anchored: boolean
+    anchor_reference: string
+    revoked_count: number
+  }
+  method_zh: string
+}

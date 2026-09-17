@@ -1,0 +1,121 @@
+{
+  "trust_root": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+  "authorised_by": {
+    "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+    "did:key:z6Mkjut1mue4XRWDrNkvEuxc2MLuB9cN8LpXa5LfK87W5JKb": "did:key:z6MkmNL6xksdEJENGk9Z1qqGsY5njKQdjU1UhnUEUvWyQUVX",
+    "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2": "did:key:z6Mkjut1mue4XRWDrNkvEuxc2MLuB9cN8LpXa5LfK87W5JKb"
+  },
+  "lei_to_company_id": {
+    "5493001KJTIIGC8Y1R12": "35866232",
+    "5493001KJTIIGC8Y1R34": "54318252"
+  },
+  "revoked_credential_ids": [
+    "urn:vc:oor:resigned-director-2025",
+    "urn:vc:oor:leaked-key-2026"
+  ],
+  "anchor_reference": "",
+  "affiliations": [
+    {
+      "company": "一詮精密工業股份有限公司",
+      "person": "王小明",
+      "role": "董事",
+      "company_id": "35866232",
+      "tier": "B",
+      "merge": false
+    },
+    {
+      "company": "世銓科技股份有限公司",
+      "person": "王小明",
+      "role": "董事",
+      "company_id": "54318252",
+      "tier": "B",
+      "merge": false
+    }
+  ],
+  "presentation": {
+    "@context": [
+      "https://www.w3.org/ns/credentials/v2"
+    ],
+    "type": [
+      "VerifiablePresentation"
+    ],
+    "verifiableCredential": [
+      {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "id": "urn:vc:oor:yichuan-wang",
+        "type": [
+          "VerifiableCredential",
+          "LegalEntityOfficialOrganizationalRolevLEICredential"
+        ],
+        "issuer": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+        "validFrom": "2026-09-16T16:09:47.766989+00:00",
+        "validUntil": "2027-09-17T16:09:47.766989+00:00",
+        "credentialSubject": {
+          "lei": "5493001KJTIIGC8Y1R12",
+          "personName": "王小明",
+          "officialRole": {
+            "roleName": "董事"
+          }
+        },
+        "proof": {
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+          "proofValue": "8c22b53c90f8b61c5dab96c1ff1fc49ed258789450b69c8d650a9de0aa13509779b0ffdfcdcbd8cec16cd725314e21edad11c163f8a1f3129a64cd927f291902"
+        }
+      },
+      {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "id": "urn:vc:oor:shiquan-wang",
+        "type": [
+          "VerifiableCredential",
+          "LegalEntityOfficialOrganizationalRolevLEICredential"
+        ],
+        "issuer": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+        "validFrom": "2026-09-16T16:09:47.770988+00:00",
+        "validUntil": "2027-09-17T16:09:47.770988+00:00",
+        "credentialSubject": {
+          "lei": "5493001KJTIIGC8Y1R34",
+          "personName": "王小明",
+          "officialRole": {
+            "roleName": "董事"
+          }
+        },
+        "proof": {
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+          "proofValue": "8ef4b244db91ac90c95e448131e9c3910c2a29204b5157d150d494ce708a64893b7109c60fa0a8baab39244d9deef9d5840bdba6f2d11ca53b069ad36cc46e07"
+        }
+      },
+      {
+        "@context": [
+          "https://www.w3.org/ns/credentials/v2"
+        ],
+        "id": "urn:vc:oor:rogue",
+        "type": [
+          "VerifiableCredential",
+          "LegalEntityOfficialOrganizationalRolevLEICredential"
+        ],
+        "issuer": "did:key:z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+        "validFrom": "2026-09-16T16:09:47.774973+00:00",
+        "validUntil": "2027-09-17T16:09:47.774973+00:00",
+        "credentialSubject": {
+          "lei": "5493001KJTIIGC8Y1R12",
+          "personName": "李大華",
+          "officialRole": {
+            "roleName": "董事"
+          }
+        },
+        "proof": {
+          "type": "DataIntegrityProof",
+          "verificationMethod": "did:key:z6MkqkvU4fDR9KkZHacVgTqDKwWkcAXJY2TfKsYnpm7G4KYr",
+          "proofValue": "49b9f9fc26ade1c195efdc46b6585a16a9fa941ac11a82d1305d169293d7de217d4c25528b04c4c1a604ec79dbac5796843a9837a21931e9247455561b75810b"
+        }
+      }
+    ]
+  },
+  "_note": "示範資料。憑證的簽章由 scripts/make_trust_fixture.py 以固定種子真實產生，可被 /trust/verify 驗證通過；rogue 那份刻意回溯不到信任根，用來示範會被擋下。真實的 vLEI 由 GLEIF 認證的 QVI 簽發，私鑰不會出現在任何 repo。"
+}

@@ -8,7 +8,16 @@
 import { chromium } from './../web/node_modules/playwright-core/index.mjs'
 
 const base = process.argv[2] ?? 'https://sme-lens.vercel.app'
-const ROUTES = ['/', '/credit', '/group', '/earlywarn', '/screening', '/workbench', '/research']
+const ROUTES = [
+  '/',
+  '/credit',
+  '/group',
+  '/earlywarn',
+  '/trust',
+  '/screening',
+  '/workbench',
+  '/research',
+]
 const VIEWPORTS = [
   { name: 'mobile', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
