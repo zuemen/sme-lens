@@ -182,6 +182,25 @@ def _hub_threshold_sweep(edges: list) -> list[tuple[int, int, int, float]]:
     return rows
 
 
+def _unfiltered_largest(edges: list) -> int:
+    """兩道橋接防護都停用時的最大歸戶群組規模——「不設防護會怎樣」的對照值。
+
+    這個數字一定要現場算，不可寫死：它是提案書引用的核心對照（「遞移閉包會
+    把半個資本市場併成一個集團」），而程式每改一次歸戶邏輯它就會變。本報告
+    開頭宣稱「每個數字都對應該次執行的實際輸出」，寫死的常數會讓那句話變成
+    假的——實際發生過：一個舊版程式留下的 7,187 被寫死在這裡，現行程式重跑
+    是 16,248。
+    """
+    affiliations = list(
+        corporate_edges_to_affiliations(
+            edges, hub_seat_threshold=10**9, coinvestee_director_threshold=10**9
+        )
+    )
+    sizes: Counter[int] = Counter(detect_groups(build_company_graph(affiliations)).values())
+    multi = [c for c in sizes.values() if c >= 2]
+    return max(multi) if multi else 0
+
+
 def _build_index_timing(csv_path: Path) -> dict:
     """一次性索引建置量測：強制重建，量出真實建置成本（見 build_index）。"""
     t0 = time.perf_counter()
@@ -254,6 +273,7 @@ def _render_report(
     scale: dict,
     a_tier: dict,
     hub_sweep: list[tuple[int, int, int, float]],
+    unfiltered_largest: int,
     index_build: dict,
     neighborhood: dict,
     walkthrough: dict,
@@ -350,7 +370,8 @@ def _render_report(
         f"門檻 2：多公司群組直接歸零——把很多真實的小型控股集團也濾掉了，"
         "太嚴不可用。門檻 3～4：最大群組仍有個位數到數十家，殘留跨集團誤併。"
         f"門檻 {DEFAULT_HUB_SEAT_THRESHOLD}：最大群組驟降到本次實測的 "
-        f"**{a_tier['largest_groups'][0][1]:,} 家**——比未過濾時的 7,187 家"
+        f"**{a_tier['largest_groups'][0][1]:,} 家**——比未過濾時的 "
+        f"{unfiltered_largest:,} 家"
         "下降兩個數量級，且排除的實體只占全體代表法人的一小部分。門檻 6 以上："
         "最大群組回升（橋接效應重新主導），可見門檻不是「愈嚴愈好」而是有"
         f"轉折點。{DEFAULT_HUB_SEAT_THRESHOLD} 是保守選擇——寧可漏掉幾個中型"
@@ -497,10 +518,13 @@ def _render_report(
     add("- 「缺額」「暫缺」「(缺額)」以姓名欄位出現，必須剔除，否則會把數千個")
     add("  空缺席次誤判成同一個「人」")
     add("- 公司名稱出現「（無統編）」樣態，屬合法公司名稱的一部分，不可跳過")
+    unresolved_ratio = 1 - a_tier["resolved_id_count"] / a_tier["edge_count"]
     add(
-        "- A 層有 29% 左右的所代表法人名稱查不到對應統一編號（多為政府機關、"
-        "境外法人），這些邊仍納入統計，只是退回名稱比對——信心略低於"
-        "「兩端都查得到統編」的邊，但仍優於純姓名比對的 B 層"
+        f"- A 層有 {unresolved_ratio:.1%} 的所代表法人名稱查不到對應統一編號"
+        "（多為政府機關、境外法人），這些邊仍納入統計，只是退回名稱比對——"
+        "信心略低於「兩端都查得到統編」的邊，但仍優於純姓名比對的 B 層"
+        "（這個比率必須由同一次執行算出：寫死的 29% 曾與本報告上方實測的"
+        "解析率直接矛盾）"
     )
     add("")
 
@@ -530,6 +554,9 @@ def main() -> int:
     for threshold, largest, multi_count, elapsed in hub_sweep:
         print(f"門檻掃描 threshold={threshold}：最大群組 {largest} 家，{elapsed:.1f}s")
 
+    unfiltered_largest = _unfiltered_largest(edges)
+    print(f"兩道防護皆停用：最大群組 {unfiltered_largest:,} 家")
+
     index_build = _build_index_timing(CSV_PATH)
     print(f"索引建置完成：{index_build['elapsed_s']:.1f}s，{index_build['db_size_bytes']:,} bytes")
 
@@ -547,7 +574,14 @@ def main() -> int:
     print(f"全部分析總耗時：{total_elapsed:.1f}s")
 
     report = _render_report(
-        scale, a_tier, hub_sweep, index_build, neighborhood, walkthrough, download_date
+        scale,
+        a_tier,
+        hub_sweep,
+        unfiltered_largest,
+        index_build,
+        neighborhood,
+        walkthrough,
+        download_date,
     )
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(report, encoding="utf-8")

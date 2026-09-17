@@ -43,3 +43,48 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # 端對端：企劃書與 README 宣稱「端對端測試全綠、CI 持續驗證」——那句話要
+  # 成立，Playwright 就必須真的在 CI 裡跑。e2e 需要活的後端：前端只在
+  # status 0 或 5xx 時退回離線快照（4xx 是設定錯誤，刻意不遮蓋），沒有後端
+  # 時三個 demo 頁會停在錯誤訊息上。
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install uvicorn
+      - name: Start backend
+        run: |
+          python -m uvicorn smelens.api.main:app --host 127.0.0.1 --port 8000 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/ready && break
+            sleep 1
+          done
+          # /ready 不只回 200，還要回報企金端點齊備——接錯後端時要在這裡就失敗，
+          # 而不是讓六支 e2e 各自 timeout 三十秒後才說不出原因。
+          curl -sf http://127.0.0.1:8000/ready | grep -q '"ready":true'
+      - name: Install frontend
+        working-directory: web
+        run: npm ci
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end
+        working-directory: web
+        env:
+          # build-time 變數：playwright.config.ts 的 webServer 會自行 build，
+          # 這個值必須在那個 build 進行時就存在。
+          VITE_API_BASE: http://127.0.0.1:8000
+        run: npm run e2e
